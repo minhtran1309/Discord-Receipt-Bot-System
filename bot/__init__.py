@@ -1,0 +1,1 @@
+"""Discord Receipt Bot System."""
