@@ -201,12 +201,15 @@ class ReceiptCog(commands.Cog):
         # Add items
         items = receipt.get('items', [])
         if items:
-            items_text = "\n".join([
-                f"• {item.get('name')}: ${price:.2f} x {quantity} = ${price * quantity:.2f}"
-                for item in items
-                for price in [item.get('price', 0)]
-                for quantity in [item.get('quantity', 1)]
-            ])
+            items_list = []
+            for item in items:
+                name = item.get('name')
+                price = item.get('price', 0)
+                quantity = item.get('quantity', 1)
+                total = price * quantity
+                items_list.append(f"• {name}: ${price:.2f} x {quantity} = ${total:.2f}")
+            
+            items_text = "\n".join(items_list)
             embed.add_field(name="Items", value=items_text, inline=False)
         
         # Add notes if present
