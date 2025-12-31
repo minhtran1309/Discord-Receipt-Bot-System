@@ -34,5 +34,5 @@ class Receipt(BaseModel):
     
     def model_post_init(self, __context) -> None:
         """Update total amount after initialization."""
-        if not self.total_amount:
+        if self.total_amount == 0.0:
             self.total_amount = self.calculate_total()
