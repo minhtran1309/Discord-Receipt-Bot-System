@@ -21,6 +21,24 @@ def _get_file_path(filename: str) -> Path:
     return settings.data_dir / filename
 
 
+def calculate_accuracy(guessed: float, actual: float) -> float:
+    """
+    Calculate accuracy percentage between guessed and actual amounts.
+    
+    Args:
+        guessed: The guessed amount
+        actual: The actual amount
+    
+    Returns:
+        Accuracy percentage, clamped between -100 and 100
+    """
+    if actual == 0:
+        return 0.0 if guessed == 0 else -100.0
+    
+    accuracy = 100 - abs((guessed - actual) / actual * 100)
+    return max(-100.0, min(100.0, accuracy))
+
+
 def load_receipts() -> List[Dict[str, Any]]:
     """Load all receipts from JSON file."""
     file_path = _get_file_path("receipts.json")
@@ -37,8 +55,11 @@ def load_receipts() -> List[Dict[str, Any]]:
 def save_receipts(receipts: List[Dict[str, Any]]) -> None:
     """Save receipts to JSON file."""
     file_path = _get_file_path("receipts.json")
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(receipts, f, indent=2, cls=JSONEncoder)
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(receipts, f, indent=2, cls=JSONEncoder)
+    except IOError as e:
+        raise IOError(f"Failed to save receipts: {str(e)}")
 
 
 def load_guesses() -> List[Dict[str, Any]]:
@@ -57,8 +78,11 @@ def load_guesses() -> List[Dict[str, Any]]:
 def save_guesses(guesses: List[Dict[str, Any]]) -> None:
     """Save guesses to JSON file."""
     file_path = _get_file_path("guesses.json")
-    with open(file_path, 'w', encoding='utf-8') as f:
-        json.dump(guesses, f, indent=2, cls=JSONEncoder)
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(guesses, f, indent=2, cls=JSONEncoder)
+    except IOError as e:
+        raise IOError(f"Failed to save guesses: {str(e)}")
 
 
 def get_receipt_by_id(receipt_id: str) -> Optional[Dict[str, Any]]:
@@ -82,3 +106,4 @@ def add_guess(guess_data: Dict[str, Any]) -> None:
     guesses = load_guesses()
     guesses.append(guess_data)
     save_guesses(guesses)
+

@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from bot.storage import load_receipts, load_guesses
+from bot.storage import load_receipts, load_guesses, calculate_accuracy
 
 
 class ClerkCog(commands.Cog):
@@ -257,10 +257,7 @@ class ClerkCog(commands.Cog):
                 best = min(correct, key=lambda g: abs(g.get('amount', 0) - g.get('actual_amount', 0)))
                 actual = best.get('actual_amount', 0)
                 guessed = best.get('amount', 0)
-                if actual != 0:
-                    accuracy = 100 - abs((guessed - actual) / actual * 100)
-                else:
-                    accuracy = 0 if guessed == 0 else -100
+                accuracy = calculate_accuracy(guessed, actual)
                 
                 embed.add_field(
                     name="Best Guess",

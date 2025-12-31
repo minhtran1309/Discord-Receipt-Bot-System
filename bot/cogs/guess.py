@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from bot.storage import load_guesses, add_guess, save_guesses
+from bot.storage import load_guesses, add_guess, save_guesses, calculate_accuracy
 
 
 class GuessCog(commands.Cog):
@@ -55,7 +55,14 @@ class GuessCog(commands.Cog):
             }
             
             # Save guess
-            add_guess(guess_data)
+            try:
+                add_guess(guess_data)
+            except IOError as e:
+                await interaction.response.send_message(
+                    f"❌ Error saving guess: {str(e)}",
+                    ephemeral=True
+                )
+                return
             
             # Create response embed
             embed = discord.Embed(
@@ -119,13 +126,17 @@ class GuessCog(commands.Cog):
         
         # Calculate accuracy
         guessed_amount = guess.get('amount', 0)
-        if actual_amount == 0:
-            accuracy = 0 if guessed_amount == 0 else -100
-        else:
-            accuracy = 100 - abs((guessed_amount - actual_amount) / actual_amount * 100)
+        accuracy = calculate_accuracy(guessed_amount, actual_amount)
         
         # Save updated guesses
-        save_guesses(guesses)
+        try:
+            save_guesses(guesses)
+        except IOError as e:
+            await interaction.response.send_message(
+                f"❌ Error saving guess correction: {str(e)}",
+                ephemeral=True
+            )
+            return
         
         # Create response embed
         embed = discord.Embed(

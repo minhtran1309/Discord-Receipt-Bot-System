@@ -67,7 +67,14 @@ class ReceiptCog(commands.Cog):
             )
             
             # Save receipt
-            add_receipt(receipt.model_dump(mode='json'))
+            try:
+                add_receipt(receipt.model_dump(mode='json'))
+            except IOError as e:
+                await interaction.response.send_message(
+                    f"❌ Error saving receipt: {str(e)}",
+                    ephemeral=True
+                )
+                return
             
             # Create response embed
             embed = discord.Embed(
