@@ -119,7 +119,10 @@ class GuessCog(commands.Cog):
         
         # Calculate accuracy
         guessed_amount = guess.get('amount', 0)
-        accuracy = 100 - abs((guessed_amount - actual_amount) / actual_amount * 100)
+        if actual_amount == 0:
+            accuracy = 0 if guessed_amount == 0 else -100
+        else:
+            accuracy = 100 - abs((guessed_amount - actual_amount) / actual_amount * 100)
         
         # Save updated guesses
         save_guesses(guesses)

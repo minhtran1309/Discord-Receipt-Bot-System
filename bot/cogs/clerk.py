@@ -64,7 +64,16 @@ class ClerkCog(commands.Cog):
         if start_date:
             try:
                 start = datetime.fromisoformat(start_date)
-                receipts = [r for r in receipts if datetime.fromisoformat(r.get('timestamp', '')) >= start]
+                filtered = []
+                for r in receipts:
+                    timestamp_str = r.get('timestamp')
+                    if timestamp_str:
+                        try:
+                            if datetime.fromisoformat(timestamp_str) >= start:
+                                filtered.append(r)
+                        except ValueError:
+                            continue
+                receipts = filtered
             except ValueError:
                 await interaction.response.send_message(
                     "❌ Invalid start_date format. Use YYYY-MM-DD",
@@ -75,7 +84,16 @@ class ClerkCog(commands.Cog):
         if end_date:
             try:
                 end = datetime.fromisoformat(end_date)
-                receipts = [r for r in receipts if datetime.fromisoformat(r.get('timestamp', '')) <= end]
+                filtered = []
+                for r in receipts:
+                    timestamp_str = r.get('timestamp')
+                    if timestamp_str:
+                        try:
+                            if datetime.fromisoformat(timestamp_str) <= end:
+                                filtered.append(r)
+                        except ValueError:
+                            continue
+                receipts = filtered
             except ValueError:
                 await interaction.response.send_message(
                     "❌ Invalid end_date format. Use YYYY-MM-DD",
@@ -237,7 +255,12 @@ class ClerkCog(commands.Cog):
             correct = [g for g in monthly_guesses if g.get('is_correct')]
             if correct:
                 best = min(correct, key=lambda g: abs(g.get('amount', 0) - g.get('actual_amount', 0)))
-                accuracy = 100 - abs((best.get('amount', 0) - best.get('actual_amount', 0)) / best.get('actual_amount', 1) * 100)
+                actual = best.get('actual_amount', 0)
+                guessed = best.get('amount', 0)
+                if actual != 0:
+                    accuracy = 100 - abs((guessed - actual) / actual * 100)
+                else:
+                    accuracy = 0 if guessed == 0 else -100
                 
                 embed.add_field(
                     name="Best Guess",
