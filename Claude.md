@@ -12,7 +12,8 @@ This is a Discord bot system for processing grocery receipts, identifying items,
 
 - **Language**: Python 3.11+
 - **Discord Framework**: discord.py 2.x with app_commands (slash commands)
-- **HTTP Client**: httpx (async)
+- **OCR**: Mistral AI Python SDK (`mistralai`)
+- **HTTP Client**: httpx (async) - for OpenRouter API
 - **Google Sheets**: gspread + google-auth
 - **Data Storage**: JSON files (MVP), SQLite (future)
 - **Config Management**: python-dotenv + pydantic-settings
@@ -94,22 +95,51 @@ receipt-bot/
 ### Mistral OCR API
 
 - **Purpose**: Extract text from receipt images
-- **Endpoint**: Provided by user at runtime (store in config)
-- **Input**: Base64 encoded image or image URL
-- **Output**: Structured text or raw OCR text
+- **Implementation**: Official `mistralai` Python SDK
+- **Model**: `mistral-ocr-latest`
+- **Input**: Base64 encoded image as data URI
+- **Output**: Markdown formatted text from `response.pages[0].markdown`
 - **Service file**: `bot/services/ocr.py`
 
-Example integration pattern:
+**Current Implementation (Official SDK)**:
 ```python
+from mistralai import Mistral
+
 async def process_image(self, image_bytes: bytes) -> str:
-    base64_image = base64.b64encode(image_bytes).decode('utf-8')
-    response = await self.client.post(
-        self.endpoint,
-        headers={"Authorization": f"Bearer {self.api_key}"},
-        json={"image": base64_image, "model": "mistral-ocr"}
+    base64_image = base64.standard_b64encode(image_bytes).decode("utf-8")
+    image_url = f"data:image/jpeg;base64,{base64_image}"
+
+    response = self.client.ocr.process(
+        model=self.model,
+        document={
+            "type": "image_url",
+            "image_url": image_url,
+        }
     )
-    return response.json()["text"]
+
+    if response.pages:
+        return response.pages[0].markdown
+    else:
+        raise Exception("No pages returned from OCR")
 ```
+
+**⚠️ Lesson Learned - User-Driven Improvement**:
+
+The initial implementation used custom HTTP calls with `httpx`, which led to API errors (422 Unprocessable Entity) due to:
+- Incorrect endpoint assumptions
+- Wrong model identifier ("CX-9" instead of "mistral-ocr-latest")
+- Overly complex document structure
+
+**User Suggestion**: Switch to the official `mistralai` Python SDK based on working example in `tests/test_mistral_api.py`.
+
+**Benefits of Using Official SDK**:
+1. ✅ Correct endpoint and model handling built-in
+2. ✅ Simpler, more maintainable code (61 lines vs custom HTTP approach)
+3. ✅ Proper error handling and retries included
+4. ✅ Type hints and IDE support
+5. ✅ Future-proof - gets updates as Mistral adds features
+
+**Key Takeaway**: Always prefer official SDKs over custom HTTP implementations when available. The SDK encapsulates best practices and handles edge cases that may not be obvious from API documentation.
 
 ### OpenRouter API
 
@@ -190,7 +220,7 @@ DISCORD_GUILD_ID=your_server_id  # Optional: for faster command sync during dev
 
 # Mistral OCR
 MISTRAL_API_KEY=your_mistral_api_key
-MISTRAL_OCR_ENDPOINT=https://api.mistral.ai/v1/ocr  # Or custom endpoint
+MISTRAL_OCR_MODEL=mistral-ocr-latest  # Optional: defaults to mistral-ocr-latest
 
 # OpenRouter
 OPENROUTER_API_KEY=your_openrouter_api_key
@@ -476,16 +506,32 @@ async def test_full_receipt_flow():
 ## Dependencies (requirements.txt)
 
 ```
+# Discord
 discord.py>=2.3.0
+
+# HTTP Client
 httpx>=0.25.0
+
+# AI/ML Services
+mistralai>=1.0.0
+
+# Google Sheets
 gspread>=5.12.0
 google-auth>=2.23.0
+
+# Image Processing
 Pillow>=10.0.0
+
+# Data Validation & Config
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
 python-dotenv>=1.0.0
+
+# Testing
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
+
+# Code Quality
 black>=23.0.0
 isort>=5.12.0
 mypy>=1.7.0
