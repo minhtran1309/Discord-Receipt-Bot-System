@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # Mistral OCR
     mistral_api_key: str
-    mistral_ocr_endpoint: str = "https://api.mistral.ai/v1/ocr"
+    mistral_ocr_model: str = "mistral-ocr-latest"
 
     # OpenRouter
     openrouter_api_key: str

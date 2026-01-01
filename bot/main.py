@@ -41,8 +41,8 @@ class ReceiptBot(commands.Bot):
         # Initialize services
         self.storage = Storage(self.settings.data_dir)
         self.ocr_service = OCRService(
-            self.settings.mistral_api_key,
-            self.settings.mistral_ocr_endpoint,
+            api_key=self.settings.mistral_api_key,
+            model=self.settings.mistral_ocr_model,
         )
         self.guesser = ItemGuesser(
             self.settings.openrouter_api_key,
