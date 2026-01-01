@@ -1,35 +1,61 @@
-"""Mistral OCR API integration."""
+"""Mistral OCR service using official mistralai package."""
 
 import base64
-import httpx
-from typing import Optional
+from mistralai import Mistral
 
 
 class OCRService:
     """Service for processing receipt images with Mistral OCR API."""
 
-    def __init__(self, api_key: str, endpoint: str):
-        """Initialize OCR service."""
+    def __init__(self, api_key: str, model: str = "mistral-ocr-latest"):
+        """
+        Initialize OCR service with Mistral AI client.
+
+        Args:
+            api_key: Mistral API key
+            model: OCR model to use (default: mistral-ocr-latest)
+        """
         self.api_key = api_key
-        self.endpoint = endpoint
-        self.client = httpx.AsyncClient(timeout=60.0)
+        self.model = model
+        self.client = Mistral(api_key=api_key)
 
     async def process_image(self, image_bytes: bytes) -> str:
-        """Process receipt image and return OCR text."""
-        base64_image = base64.b64encode(image_bytes).decode("utf-8")
+        """
+        Process receipt image and return OCR text.
+
+        Args:
+            image_bytes: Raw image bytes
+
+        Returns:
+            Extracted text from the image as markdown
+        """
+        # Encode image to base64 data URI
+        base64_image = base64.standard_b64encode(image_bytes).decode("utf-8")
+        image_url = f"data:image/jpeg;base64,{base64_image}"
 
         try:
-            response = await self.client.post(
-                self.endpoint,
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json={"image": base64_image, "model": "mistral-ocr"},
+            # Call Mistral OCR API (synchronous client)
+            response = self.client.ocr.process(
+                model=self.model,
+                document={
+                    "type": "image_url",
+                    "image_url": image_url,
+                }
             )
-            response.raise_for_status()
-            result = response.json()
-            return result.get("text", "")
-        except httpx.HTTPError as e:
+
+            # Extract markdown text from pages
+            if response.pages:
+                # Get text from first page (receipts are typically single page)
+                ocr_text = response.pages[0].markdown
+                return ocr_text
+            else:
+                raise Exception("No pages returned from OCR")
+
+        except Exception as e:
             raise Exception(f"OCR API error: {e}") from e
 
     async def close(self) -> None:
-        """Close HTTP client."""
-        await self.client.aclose()
+        """Close the Mistral client."""
+        # Mistral SDK may not need explicit close
+        # Keep for compatibility with existing code
+        pass
