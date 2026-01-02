@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # OpenRouter
     openrouter_api_key: str
-    openrouter_model: str = "mistralai/mistral-7b-instruct"
+    openrouter_model: str = "openai/gpt-4o-mini"
 
     # Google Sheets
     google_credentials_path: str = "credentials.json"

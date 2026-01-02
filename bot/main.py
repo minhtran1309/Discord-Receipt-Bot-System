@@ -45,9 +45,9 @@ class ReceiptBot(commands.Bot):
             model=self.settings.mistral_ocr_model,
         )
         self.guesser = ItemGuesser(
-            self.settings.openrouter_api_key,
-            self.settings.openrouter_model,
-            self.storage.load_corrections(),
+            api_key=self.settings.openrouter_api_key,
+            model=self.settings.openrouter_model,
+            corrections=self.storage.load_corrections(),
         )
         self.sheets_service = SheetsService(
             self.settings.google_credentials_path,
@@ -60,7 +60,7 @@ class ReceiptBot(commands.Bot):
 
         # Add cogs with error handling
         cogs_to_load = [
-            ("Receipt", ReceiptCog(self, self.ocr_service, self.storage)),
+            ("Receipt", ReceiptCog(self, self.ocr_service, self.storage, self.guesser, self.settings)),
             ("Guess", GuessCog(self, self.guesser, self.storage, self.settings)),
             ("Clerk", ClerkCog(self, self.sheets_service, self.storage)),
         ]

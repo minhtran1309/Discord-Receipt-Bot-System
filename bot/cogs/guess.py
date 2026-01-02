@@ -9,7 +9,7 @@ from bot.config import Settings
 
 
 class GuessCog(commands.Cog):
-    """Commands for AI-powered item name identification."""
+    """Commands for AI-powered item name identification and corrections."""
 
     def __init__(
         self,
@@ -25,57 +25,11 @@ class GuessCog(commands.Cog):
         self.settings = settings
 
     guess_group = app_commands.Group(
-        name="guess", description="AI item identification commands"
+        name="guess", description="Item name correction commands"
     )
 
-    @guess_group.command(
-        name="process", description="Run AI guessing on a receipt's items"
-    )
-    async def process(self, interaction: discord.Interaction, filename: str):
-        """Process all items in a receipt with AI guessing."""
-        await interaction.response.defer()
-
-        receipt = self.storage.load_receipt(filename)
-        if not receipt:
-            await interaction.followup.send("Receipt not found.")
-            return
-
-        # Load latest corrections
-        corrections = self.storage.load_corrections()
-        self.guesser.update_corrections(corrections)
-
-        # Process each item
-        processed = 0
-        needs_review = 0
-
-        for item in receipt.items:
-            if not item.guessed_name:
-                result = await self.guesser.guess(item.raw_name, receipt.store)
-                item.guessed_name = result.product_name
-                item.confidence = result.confidence
-
-                if result.confidence < self.settings.confidence_threshold:
-                    item.needs_review = True
-                    needs_review += 1
-
-                processed += 1
-
-        # Save updated receipt
-        self.storage.save_receipt(receipt)
-
-        # Send response
-        embed = discord.Embed(
-            title="AI Guessing Complete", color=0x00FF00
-        )
-        embed.add_field(name="Processed", value=str(processed), inline=True)
-        embed.add_field(name="Needs Review", value=str(needs_review), inline=True)
-
-        if needs_review > 0:
-            embed.description = (
-                f"⚠️ {needs_review} items have low confidence and need review."
-            )
-
-        await interaction.followup.send(embed=embed)
+    # REMOVED: /guess process command (now automatic after receipt processing)
+    # REMOVED: /guess clear command
 
     @guess_group.command(
         name="correct", description="Manually correct an item name"
@@ -87,34 +41,53 @@ class GuessCog(commands.Cog):
         store: str,
         actual_name: str,
     ):
-        """Save a correction for future item guessing."""
+        """
+        Save a manual correction for an item name.
+
+        Args:
+            raw_name: The abbreviated name from the receipt
+            store: The store name
+            actual_name: The correct full product name
+        """
+        await interaction.response.defer()
+
+        # Save correction to storage
         self.storage.save_correction(raw_name, store, actual_name)
 
-        await interaction.response.send_message(
-            f"✓ Learned: `{raw_name}` at {store} → `{actual_name}`"
+        # Update guesser's corrections cache
+        key = f"{raw_name}|{store}"
+        self.guesser.corrections[key] = actual_name
+
+        embed = discord.Embed(
+            title="Correction Saved",
+            description=f"**{raw_name}** at **{store}** → **{actual_name}**",
+            color=0x00FF00,
         )
+        await interaction.followup.send(embed=embed)
 
     @guess_group.command(name="mappings", description="Show all learned corrections")
     async def mappings(self, interaction: discord.Interaction):
         """Display all learned item name corrections."""
+        await interaction.response.defer()
+
         corrections = self.storage.load_corrections()
 
         if not corrections:
-            await interaction.response.send_message("No corrections learned yet.")
+            await interaction.followup.send("No corrections saved yet.")
             return
 
+        # Build embed with corrections (max 25 fields)
         embed = discord.Embed(
-            title="Learned Corrections",
-            description=f"{len(corrections)} mappings",
-            color=0x0000FF,
+            title="Item Name Corrections",
+            description=f"Total: {len(corrections)} corrections",
+            color=0x3498DB,
         )
 
         # Show first 25 corrections
-        items = list(corrections.items())[:25]
-        for key, value in items:
-            raw, store = key.split("|")
+        for idx, (key, value) in enumerate(list(corrections.items())[:25]):
+            raw_name, store = key.split("|")
             embed.add_field(
-                name=f"{raw} ({store})",
+                name=f"{raw_name} @ {store}",
                 value=value,
                 inline=False,
             )
@@ -122,21 +95,7 @@ class GuessCog(commands.Cog):
         if len(corrections) > 25:
             embed.set_footer(text=f"Showing 25 of {len(corrections)} corrections")
 
-        await interaction.response.send_message(embed=embed)
-
-    @guess_group.command(name="clear", description="Clear a specific correction")
-    async def clear(
-        self, interaction: discord.Interaction, raw_name: str, store: str
-    ):
-        """Delete a correction mapping."""
-        success = self.storage.delete_correction(raw_name, store)
-
-        if success:
-            await interaction.response.send_message(
-                f"Cleared correction for `{raw_name}` at {store}"
-            )
-        else:
-            await interaction.response.send_message("Correction not found.")
+        await interaction.followup.send(embed=embed)
 
 
 async def setup(bot: commands.Bot):

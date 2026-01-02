@@ -5,19 +5,30 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
 from bot.services.ocr import OCRService
+from bot.services.guesser import ItemGuesser
 from bot.storage import Storage
 from bot.models import Receipt, ReceiptItem
+from bot.config import Settings
 import re
 
 
 class ReceiptCog(commands.Cog):
     """Commands for processing and managing receipts."""
 
-    def __init__(self, bot: commands.Bot, ocr_service: OCRService, storage: Storage):
+    def __init__(
+        self,
+        bot: commands.Bot,
+        ocr_service: OCRService,
+        storage: Storage,
+        guesser: ItemGuesser,
+        settings: Settings,
+    ):
         """Initialize receipt cog."""
         self.bot = bot
         self.ocr_service = ocr_service
         self.storage = storage
+        self.guesser = guesser
+        self.settings = settings
 
     receipt_group = app_commands.Group(
         name="receipt", description="Receipt processing commands"
@@ -27,38 +38,69 @@ class ReceiptCog(commands.Cog):
     async def process(
         self, interaction: discord.Interaction, image: discord.Attachment
     ):
-        """Process a receipt image with OCR."""
+        """Process a receipt image with OCR and automatically guess item names."""
         await interaction.response.defer()
 
         try:
-            # Download image
+            # Step 1: Download image
             image_bytes = await image.read()
 
-            # Process with OCR
+            # Step 2: OCR
+            await interaction.followup.send("🔍 Processing receipt with OCR...")
             ocr_text = await self.ocr_service.process_image(image_bytes)
 
-            # Parse receipt (basic implementation)
+            # Step 3: Parse receipt
             parsed = self._parse_receipt(ocr_text)
 
-            # Save to storage
+            # Step 4: Save receipt (unguessed)
             filename = self.storage.save_receipt(parsed)
 
-            # Send response
+            # Step 5: AUTO-GUESS ITEMS
+            await interaction.followup.send("🤖 Guessing item names...")
+
+            # Load latest corrections
+            corrections = self.storage.load_corrections()
+            self.guesser.update_corrections(corrections)
+
+            # Batch guess all items
+            guess_results = await self.guesser.guess_batch(parsed.items, parsed.store)
+
+            # Update items with guesses
+            needs_review = 0
+            for item, guess_result in zip(parsed.items, guess_results):
+                item.guessed_name = guess_result.product_name
+                item.confidence = guess_result.confidence
+
+                # Mark for review if confidence is low
+                if guess_result.confidence < self.settings.confidence_threshold:
+                    item.needs_review = True
+                    needs_review += 1
+
+            # Save updated receipt with guesses
+            self.storage.save_receipt(parsed)
+
+            # Step 6: Send final result
             embed = discord.Embed(
-                title="Receipt Processed",
-                description=f"Saved as `{filename}`",
+                title="✅ Receipt Processed & Items Guessed",
                 color=0x00FF00,
             )
             embed.add_field(name="Store", value=parsed.store, inline=True)
-            embed.add_field(
-                name="Items", value=str(len(parsed.items)), inline=True
-            )
             embed.add_field(name="Total", value=f"${parsed.total:.2f}", inline=True)
+            embed.add_field(name="Items", value=len(parsed.items), inline=True)
+            embed.add_field(name="Needs Review", value=needs_review, inline=True)
+            embed.add_field(name="Saved as", value=f"`{filename}`", inline=False)
+
+            if needs_review > 0:
+                embed.add_field(
+                    name="⚠️ Low Confidence Items",
+                    value=f"{needs_review} items need review. Use `/guess correct` to fix.",
+                    inline=False
+                )
 
             await interaction.followup.send(embed=embed)
 
         except Exception as e:
-            await interaction.followup.send(f"Error processing receipt: {e}")
+            await interaction.followup.send(f"❌ Error processing receipt: {e}")
 
     @receipt_group.command(name="list", description="List all processed receipts")
     async def list_receipts(self, interaction: discord.Interaction):
