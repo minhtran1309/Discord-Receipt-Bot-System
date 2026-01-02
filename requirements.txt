@@ -6,6 +6,7 @@ httpx>=0.25.0
 
 # AI/ML Services
 mistralai>=1.0.0
+openrouter>=1.0.0
 
 # Google Sheets
 gspread>=5.12.0
