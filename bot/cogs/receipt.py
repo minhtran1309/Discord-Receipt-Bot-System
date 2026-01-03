@@ -45,12 +45,25 @@ class ReceiptCog(commands.Cog):
             # Step 1: Download image
             image_bytes = await image.read()
 
-            # Step 2: OCR
+            # Step 2: OCR with structured extraction
             await interaction.followup.send("🔍 Processing receipt with OCR...")
-            ocr_text = await self.ocr_service.process_image(image_bytes)
+            ocr_text, structured_data = await self.ocr_service.process_image(
+                image_bytes,
+                use_structured_extraction=self.settings.ocr_use_structured_extraction
+            )
 
-            # Step 3: Parse receipt
-            parsed = self._parse_receipt(ocr_text)
+            # Step 3: Parse receipt (structured or fallback to regex)
+            if structured_data:
+                parsed = self._convert_ocr_to_receipt(structured_data, ocr_text)
+            else:
+                await interaction.followup.send("⚠️ Falling back to basic parsing...")
+                parsed = self._parse_receipt(ocr_text)
+
+            # Validate extracted data
+            validation_issues = self._validate_receipt(parsed)
+            if validation_issues:
+                issues_text = "\n".join(f"• {issue}" for issue in validation_issues)
+                await interaction.followup.send(f"⚠️ **Validation Issues:**\n{issues_text}")
 
             # Step 4: Save receipt (unguessed)
             filename = self.storage.save_receipt(parsed)
@@ -274,10 +287,84 @@ class ReceiptCog(commands.Cog):
             total=total,
         )
 
+    def _convert_ocr_to_receipt(self, ocr_data, raw_text: str) -> Receipt:
+        """Convert OCR structured data to Receipt model.
+
+        Args:
+            ocr_data: OCRReceiptData from structured extraction
+            raw_text: Raw markdown text from OCR
+
+        Returns:
+            Receipt object with extracted data
+        """
+        from bot.services.ocr import OCRReceiptData
+
+        # Convert OCR items to ReceiptItem objects
+        items = [
+            ReceiptItem(
+                raw_name=item.raw_name,
+                quantity=item.quantity,
+                unit=item.unit,
+                price=item.price,
+                discount=item.discount,
+                sku=item.sku,
+            )
+            for item in ocr_data.items
+        ]
+
+        # Parse datetime from OCR data
+        try:
+            dt = datetime.strptime(
+                f"{ocr_data.date} {ocr_data.time or '00:00'}", "%Y-%m-%d %H:%M"
+            )
+        except:
+            dt = datetime.now()
+
+        return Receipt(
+            filename="",
+            store=ocr_data.store_name,
+            datetime=dt,
+            raw_ocr_text=raw_text,
+            items=items,
+            total=ocr_data.total,
+            subtotal=ocr_data.subtotal,
+            tax=ocr_data.tax,
+            discount_total=ocr_data.discount_total,
+            payment_method=ocr_data.payment_method,
+            verified=False,
+        )
+
+    def _validate_receipt(self, receipt: Receipt) -> list[str]:
+        """Validate extracted receipt data.
+
+        Args:
+            receipt: Receipt object to validate
+
+        Returns:
+            List of validation issues (empty if no issues)
+        """
+        issues = []
+
+        # Check if sum of item prices matches total
+        items_sum = sum(item.price * item.quantity for item in receipt.items)
+        if abs(items_sum - receipt.total) > 0.10:  # Allow 10 cent variance
+            issues.append(
+                f"Items sum (${items_sum:.2f}) doesn't match total (${receipt.total:.2f})"
+            )
+
+        # Check for missing critical fields
+        if not receipt.store or receipt.store == "Unknown Store":
+            issues.append("Store name not detected")
+
+        if not receipt.items:
+            issues.append("No items detected")
+
+        return issues
+
     def _save_items_to_tsv(self, receipt: Receipt) -> None:
         """Save receipt items to a TSV file.
 
-        Columns: raw_name, guessed_name, confidence, unit, price, store, date
+        Columns: raw_name, guessed_name, confidence, unit, price, discount, sku, store, date
         """
         from pathlib import Path
 
@@ -292,7 +379,7 @@ class ReceiptCog(commands.Cog):
         # Write items to TSV
         with open(tsv_path, "w", encoding="utf-8") as f:
             # Write header
-            f.write("raw_name\tguessed_name\tconfidence\tunit\tprice\tstore\tdate\n")
+            f.write("raw_name\tguessed_name\tconfidence\tunit\tprice\tdiscount\tsku\tstore\tdate\n")
 
             # Write each item
             for item in receipt.items:
@@ -301,10 +388,12 @@ class ReceiptCog(commands.Cog):
                 confidence = f"{item.confidence:.4f}" if item.confidence is not None else ""
                 unit = item.unit or "ea"
                 price = f"{item.price:.2f}"
+                discount = f"{item.discount:.2f}" if item.discount else "0.00"
+                sku = item.sku or ""
                 store = receipt.store
                 date = receipt.datetime.strftime("%Y-%m-%d")
 
-                f.write(f"{raw_name}\t{guessed_name}\t{confidence}\t{unit}\t{price}\t{store}\t{date}\n")
+                f.write(f"{raw_name}\t{guessed_name}\t{confidence}\t{unit}\t{price}\t{discount}\t{sku}\t{store}\t{date}\n")
 
 
 async def setup(bot: commands.Bot):

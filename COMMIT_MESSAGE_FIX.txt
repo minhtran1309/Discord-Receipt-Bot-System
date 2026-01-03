@@ -1,0 +1,19 @@
+Fix receipt parsing validation error for HEIC files
+
+Fixed Pydantic validation error that occurred when processing HEIC receipts. The error was caused by receipt lines with $0.00 prices (like "Rounding $0.00" or "Change $0.00") which failed the price > 0 validation constraint.
+
+**Changes:**
+- Added skip condition for prices <= 0
+- Added keyword filtering to skip non-item lines (total, subtotal, amount, change, rounding, gst, tax, eft, card, etc.)
+- Added date pattern detection to skip lines like "30.12.25 18:18"
+- Added transaction code filtering for lines starting with * or # followed by digits
+- Improved total extraction to match "total" but not "subtotal"
+- Added try-except block to silently skip items that fail validation
+
+**Testing:**
+- Tested with IMG_4006.HEIC (Aldi receipt) - correctly parses 5 items
+- Tested with IMG_4008.HEIC (Bunnings receipt) - correctly parses 1 item
+- Added debug and test scripts to tests/ directory
+
+**Files Modified:**
+- bot/cogs/receipt.py - Enhanced _parse_receipt() method with better filtering
