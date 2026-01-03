@@ -1,0 +1,14 @@
+Document OCR migration lessons learned in Claude.md
+
+Add detailed documentation of the transition from custom HTTP implementation to official Mistral SDK, including:
+
+- Updated API Integrations section with current SDK implementation
+- Added "Lesson Learned" subsection explaining the migration journey
+- Documented the errors encountered with initial approach (422 errors)
+- Explained user suggestion to use official SDK
+- Listed benefits of SDK approach vs custom HTTP
+- Updated Tech Stack to highlight mistralai package
+- Updated Environment Variables to use model instead of endpoint
+- Updated Dependencies section with mistralai>=1.0.0
+
+This serves as a valuable reference for future development decisions, emphasizing the importance of using official SDKs when available.

@@ -1,0 +1,51 @@
+## Summary
+
+Major refactor of the guess bot to improve user experience, efficiency, and cost optimization.
+
+### Key Changes
+
+**🤖 Auto-Guessing Workflow**
+- Receipt processing now automatically triggers item name guessing
+- No manual `/guess process` command needed
+- Seamless user experience: upload → OCR → parse → guess → done
+
+**📋 Simplified Commands**
+- ✅ Kept: `/guess correct` - save manual corrections
+- ✅ Kept: `/guess mappings` - view learned corrections
+- ❌ Removed: `/guess process` - now automatic
+- ❌ Removed: `/guess clear` - per user request
+
+**🔧 OpenRouter SDK Migration**
+- Migrated from custom HTTP to official `openrouter` Python SDK
+- Added `openrouter>=1.0.0` to requirements
+- Better error handling, type safety, and maintainability
+
+**⚡ Batch Processing**
+- Implemented `guess_batch()` for processing multiple items at once
+- Single API call instead of sequential per-item calls
+- Significantly faster processing
+
+**💰 Cost Optimization**
+- Switched from `mistralai/mistral-7b-instruct` to `openai/gpt-4o-mini`
+- OpenAI's cheapest model
+- Batch requests reduce API call count
+- Corrections cache avoids redundant calls
+
+### Files Modified
+
+- `bot/services/guesser.py` - Complete rewrite with OpenRouter SDK, batch processing
+- `bot/cogs/guess.py` - Removed 2 commands, kept 2 essential ones
+- `bot/cogs/receipt.py` - Added auto-guessing after OCR
+- `bot/config.py` - Updated default model to gpt-4o-mini
+- `bot/main.py` - Pass guesser to ReceiptCog
+- `requirements.txt` - Added openrouter>=1.0.0
+- `tests/test_guesser.py` - Updated for batch processing
+
+### Benefits
+
+1. **Better UX**: Automatic workflow, progress messages, clear feedback
+2. **Faster**: Batch API calls reduce latency
+3. **Cheaper**: gpt-4o-mini model + fewer API calls
+4. **Simpler**: Fewer commands, cleaner code, official SDK
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)

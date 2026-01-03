@@ -1,0 +1,18 @@
+Migrate OCR implementation to Mistral AI Python SDK
+
+Replace custom HTTP-based OCR implementation with official mistralai package for improved reliability and maintainability.
+it is clear that Claude code does not know mistral sdk well. it suggested a complicated solution that did not work and sugessted another complicated solution.
+Human intervention sugessted using Mistral SDK. 
+Changes:
+- Update bot/services/ocr.py to use Mistral SDK instead of httpx
+- Simplify OCR service based on test_mistral_api.py example
+- Change model from "CX-9" to "mistral-ocr-latest"
+- Update requirements.txt to include mistralai>=1.0.0
+- Update config.py to use model parameter instead of endpoint
+- Update bot/main.py OCR initialization for new signature
+- Update tests/test_ocr.py for SDK compatibility
+- Add test_mistral_api.py as reference implementation
+- Add test_output directory with OCR test results
+
+Successfully tested with Aldi receipt - extracted 748 characters of text with proper formatting and all receipt details.
+

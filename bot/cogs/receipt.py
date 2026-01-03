@@ -79,7 +79,10 @@ class ReceiptCog(commands.Cog):
             # Save updated receipt with guesses
             self.storage.save_receipt(parsed)
 
-            # Step 6: Send final result
+            # Save items to TSV file
+            self._save_items_to_tsv(parsed)
+
+            # Step 6: Send final result with table
             embed = discord.Embed(
                 title="✅ Receipt Processed & Items Guessed",
                 color=0x00FF00,
@@ -89,6 +92,35 @@ class ReceiptCog(commands.Cog):
             embed.add_field(name="Items", value=len(parsed.items), inline=True)
             embed.add_field(name="Needs Review", value=needs_review, inline=True)
             embed.add_field(name="Saved as", value=f"`{filename}`", inline=False)
+
+            # Build table-like display of items
+            if parsed.items:
+                # Create table header
+                table_lines = [
+                    "```",
+                    f"{'Raw Name':<20} {'Guessed Name':<25} {'Conf':<6} {'Review':<6}",
+                    "-" * 63
+                ]
+
+                # Add each item as a row
+                for item in parsed.items[:10]:  # Limit to first 10 items
+                    raw = (item.raw_name[:18] + "..") if len(item.raw_name) > 20 else item.raw_name
+                    guessed = (item.guessed_name[:23] + "..") if item.guessed_name and len(item.guessed_name) > 25 else (item.guessed_name or "N/A")
+                    conf = f"{item.confidence:.2f}" if item.confidence is not None else "N/A"
+                    review = "⚠️" if item.needs_review else "✓"
+
+                    table_lines.append(f"{raw:<20} {guessed:<25} {conf:<6} {review:<6}")
+
+                if len(parsed.items) > 10:
+                    table_lines.append(f"\n... and {len(parsed.items) - 10} more items")
+
+                table_lines.append("```")
+
+                embed.add_field(
+                    name="Items Details",
+                    value="\n".join(table_lines),
+                    inline=False
+                )
 
             if needs_review > 0:
                 embed.add_field(
@@ -180,23 +212,58 @@ class ReceiptCog(commands.Cog):
         total = 0.0
         items = []
 
-        # Look for total
+        # Look for total (prioritize lines with just "total", not "subtotal")
         for line in lines:
-            if "total" in line.lower():
-                # Extract price from line
+            line_lower = line.lower()
+            # Match "total" but not "subtotal"
+            if line_lower.startswith("total") or " total " in line_lower or line_lower.endswith("total"):
+                # Extract price from line (take the last match)
                 matches = re.findall(r"\$?(\d+\.\d{2})", line)
                 if matches:
                     total = float(matches[-1])
+                    break  # Stop at first "total" match
+
+        # Keywords to skip (not actual items)
+        skip_keywords = [
+            "total", "subtotal", "amount", "change", "rounding",
+            "gst", "tax", "card", "eft", "credit", "debit",
+            "sales", "payment", "net", "cash"
+        ]
 
         # Basic item extraction (simplified)
         for line in lines:
             # Look for lines with prices
             matches = re.findall(r"(.+?)\s+\$?(\d+\.\d{2})", line)
-            if matches and "total" not in line.lower():
+            if matches:
                 name, price = matches[0]
-                items.append(
-                    ReceiptItem(raw_name=name.strip(), price=float(price))
-                )
+                price_float = float(price)
+
+                # Skip if price is 0 or negative
+                if price_float <= 0:
+                    continue
+
+                # Skip lines containing common non-item keywords
+                if any(keyword in line.lower() for keyword in skip_keywords):
+                    continue
+
+                # Skip lines that look like dates (e.g., "30.12.25" or "02/01/2026")
+                # Check if line contains date patterns: DD.MM.YY or MM/DD/YYYY
+                if re.search(r'\d{1,2}[./]\d{1,2}[./]\d{2,4}', line):
+                    continue
+
+                # Skip lines that look like transaction codes or reference numbers
+                # Lines starting with * or # followed by digits, or containing REF/TRANS/TERMINAL
+                if re.search(r'^[*#]\d+|REF|TRANS|TERMINAL', line, re.IGNORECASE):
+                    continue
+
+                # Try to create ReceiptItem, skip if validation fails
+                try:
+                    items.append(
+                        ReceiptItem(raw_name=name.strip(), price=price_float)
+                    )
+                except Exception:
+                    # Skip invalid items silently
+                    continue
 
         return Receipt(
             filename="",
@@ -206,6 +273,38 @@ class ReceiptCog(commands.Cog):
             items=items,
             total=total,
         )
+
+    def _save_items_to_tsv(self, receipt: Receipt) -> None:
+        """Save receipt items to a TSV file.
+
+        Columns: raw_name, guessed_name, confidence, unit, price, store, date
+        """
+        from pathlib import Path
+
+        # Create items directory if it doesn't exist
+        items_dir = Path(self.storage.data_dir) / "items"
+        items_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate TSV filename based on receipt datetime and store
+        tsv_filename = f"{receipt.datetime:%Y-%m-%d_%H%M}_{receipt.store.lower().replace(' ', '_')}_items.tsv"
+        tsv_path = items_dir / tsv_filename
+
+        # Write items to TSV
+        with open(tsv_path, "w", encoding="utf-8") as f:
+            # Write header
+            f.write("raw_name\tguessed_name\tconfidence\tunit\tprice\tstore\tdate\n")
+
+            # Write each item
+            for item in receipt.items:
+                raw_name = item.raw_name or ""
+                guessed_name = item.guessed_name or ""
+                confidence = f"{item.confidence:.4f}" if item.confidence is not None else ""
+                unit = item.unit or "ea"
+                price = f"{item.price:.2f}"
+                store = receipt.store
+                date = receipt.datetime.strftime("%Y-%m-%d")
+
+                f.write(f"{raw_name}\t{guessed_name}\t{confidence}\t{unit}\t{price}\t{store}\t{date}\n")
 
 
 async def setup(bot: commands.Bot):

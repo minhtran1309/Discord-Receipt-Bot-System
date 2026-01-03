@@ -1,0 +1,50 @@
+Refactor guess bot with OpenRouter SDK and auto-guessing
+
+Major refactor of the guess bot to improve user experience and efficiency:
+
+**Auto-Guessing Workflow:**
+- Receipt processing now automatically triggers item name guessing
+- No manual `/guess process` command needed anymore
+- Batch processing sends all items in one API request
+
+**Simplified Commands:**
+- REMOVED: `/guess process` (now automatic)
+- REMOVED: `/guess clear` (per user request)
+- KEPT: `/guess correct` - save manual corrections
+- KEPT: `/guess mappings` - view all learned corrections
+
+**OpenRouter SDK Migration:**
+- Migrated from custom HTTP calls to official `openrouter` Python SDK
+- Added `openrouter>=1.0.0` to requirements.txt
+- Better error handling and type safety
+- Simpler, more maintainable code
+
+**Model Update:**
+- Switched from `mistralai/mistral-7b-instruct` to `openai/gpt-4o-mini`
+- Using OpenAI's cheapest model for cost efficiency
+- Maintained same quality for item name guessing
+
+**Batch Processing:**
+- Implemented `guess_batch()` method for processing multiple items at once
+- Single API call instead of sequential calls per item
+- Faster processing and lower latency
+
+**Updated Files:**
+- bot/services/guesser.py - Complete rewrite with OpenRouter SDK and batch processing
+- bot/cogs/guess.py - Removed process and clear commands, simplified to 2 commands
+- bot/cogs/receipt.py - Added auto-guessing after OCR processing
+- bot/config.py - Changed default model to openai/gpt-4o-mini
+- bot/main.py - Updated cog initialization to pass guesser to ReceiptCog
+- requirements.txt - Added openrouter>=1.0.0
+- tests/test_guesser.py - Updated tests for batch processing
+
+**Benefits:**
+- ✅ Better UX: Automatic workflow, no manual guessing needed
+- ✅ Faster: Batch API calls vs sequential
+- ✅ Cheaper: gpt-4o-mini model + batch requests
+- ✅ Simpler: Fewer commands, cleaner code
+- ✅ Official SDK: Better error handling and type safety
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
