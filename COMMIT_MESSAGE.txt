@@ -1,0 +1,68 @@
+feat: Complete Discord Receipt Bot with AI/ML services
+
+## Core Features
+
+### Bot Infrastructure
+- Complete Discord bot with slash commands (discord.py 2.x)
+- Three command modules (cogs): Receipt, Guess, Clerk
+- Pydantic-based configuration management with .env support
+- Structured logging and error handling
+- Activity status display
+
+### Receipt Processing (/receipt commands)
+- Upload and process receipt images with Mistral OCR
+- List, show, verify, and delete receipts
+- Individual JSON file storage per receipt
+- Basic receipt parsing from OCR text
+
+### AI Item Identification (/guess commands)
+- OpenRouter LLM integration for product name guessing
+- Corrections cache system for learning from user feedback
+- Confidence threshold checking (default 0.66)
+- View and manage learned item mappings
+
+### Expense Tracking (/clerk commands)
+- Google Sheets synchronization for verified receipts
+- Query spending by product name
+- Monthly expense summaries
+- Custom date-range reports
+
+## External Services
+- Mistral OCR API: Receipt image processing
+- OpenRouter API: AI-powered item name identification
+- Google Sheets API: Automated expense tracking
+
+## Data Models
+- Receipt with OCR pipeline support (raw/guessed/confirmed names)
+- ReceiptItem with price/quantity validation and total property
+- GuessResult with confidence scores
+- Corrections storage for AI learning
+
+## Cherry-Picked Improvements from copilot/add-discord-bot-structure
+- Error handling for cog loading with try/except
+- Activity status ("watching receipts 📝")
+- Pydantic Field validators (price > 0, quantity > 0)
+- ReceiptItem.total property for convenience
+- calculate_accuracy() utility function
+- Enhanced logging with status symbols
+
+## Documentation
+- Complete setup guide (DISCORD_SETUP.md)
+- GitHub CLI commands reference (GITHUB_COMMANDS.md)
+- Development milestones tracking (Claude.md)
+- Branch comparison analysis (BRANCH_COMPARISON_REPORT.md)
+- GitHub issues status report (GITHUB_ISSUES_STATUS.md)
+
+## Testing
+- Unit tests for storage, guesser, and OCR services
+- Test fixtures and async test support
+- Code quality tools: black, isort, mypy
+
+## Configuration
+- Comprehensive .env.example template
+- Support for Discord, Mistral, OpenRouter, Google Sheets
+- Optional guild-specific command sync
+- Configurable confidence threshold
+
+Relates to milestones M1 (Core Infrastructure), M2 (Item Guessing),
+and M3 (Clerk Bot). Ready for testing.

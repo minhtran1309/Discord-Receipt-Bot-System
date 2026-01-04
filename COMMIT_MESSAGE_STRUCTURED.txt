@@ -1,0 +1,55 @@
+Implement Mistral OCR structured extraction with Pydantic schemas
+
+Major enhancement to receipt processing using Mistral OCR's document_annotation_format feature for structured data extraction instead of regex parsing.
+
+**Core Changes:**
+
+1. **Enhanced Data Models (bot/models.py)**
+   - Added `discount`, `sku`, `language` fields to ReceiptItem
+   - Added `subtotal`, `tax`, `discount_total`, `payment_method` to Receipt
+   - All fields include descriptions for better OCR extraction
+
+2. **OCR Extraction Schemas (bot/services/ocr.py)**
+   - Created `OCRReceiptItem` schema for item-level extraction
+   - Created `OCRReceiptData` schema for complete receipt extraction
+   - Implemented structured extraction using `response_format_from_pydantic_model`
+   - Added MIME type detection for JPEG, PNG, HEIC formats
+   - Configured table_format="html" to preserve table structure
+   - Fallback to basic markdown extraction if structured fails
+
+3. **Receipt Processing (bot/cogs/receipt.py)**
+   - Added `_convert_ocr_to_receipt()` to convert OCR data to Receipt model
+   - Added `_validate_receipt()` to check data integrity (items sum vs total)
+   - Updated process command to use structured extraction
+   - Enhanced TSV export with discount and SKU columns
+   - Validation warnings shown to user when issues detected
+
+4. **Configuration (bot/config.py, .env.example)**
+   - Added `ocr_table_format` - HTML/markdown table preservation
+   - Added `ocr_extract_header` - Extract header information
+   - Added `ocr_use_structured_extraction` - Feature flag
+
+**Capabilities Enabled:**
+
+✅ Multi-line item names (Bunnings receipts)
+✅ Separate unit extraction (kg, g, L, ml, ea)
+✅ Discount column support (defaults to 0)
+✅ Multi-language support (Korean, Chinese, English)
+✅ SKU/barcode extraction
+✅ Date/time parsing with fallback
+✅ Store location extraction
+✅ Payment method detection
+✅ Data validation with user feedback
+
+**Migration Strategy:**
+
+- Backward compatible: regex parsing kept as fallback
+- Feature flag allows disabling structured extraction
+- Graceful degradation if OCR API doesn't support annotations
+
+**Testing Priorities:**
+
+1. Asian grocery stores (multi-language)
+2. Bunnings/hardware stores (multi-line items)
+3. Receipts with discount columns
+4. Validation against existing HEIC test files

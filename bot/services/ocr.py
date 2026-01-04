@@ -27,14 +27,17 @@ class OCRService:
             image_bytes: Raw image bytes
 
         Returns:
-            Extracted text from the image as markdown
+            Extracted markdown text from receipt
         """
+        # Detect MIME type
+        mime_type = self._detect_mime_type(image_bytes)
+
         # Encode image to base64 data URI
         base64_image = base64.standard_b64encode(image_bytes).decode("utf-8")
-        image_url = f"data:image/jpeg;base64,{base64_image}"
+        image_url = f"data:{mime_type};base64,{base64_image}"
 
+        # Basic OCR extraction
         try:
-            # Call Mistral OCR API (synchronous client)
             response = self.client.ocr.process(
                 model=self.model,
                 document={
@@ -45,14 +48,31 @@ class OCRService:
 
             # Extract markdown text from pages
             if response.pages:
-                # Get text from first page (receipts are typically single page)
-                ocr_text = response.pages[0].markdown
-                return ocr_text
+                return response.pages[0].markdown
             else:
                 raise Exception("No pages returned from OCR")
 
         except Exception as e:
             raise Exception(f"OCR API error: {e}") from e
+
+    def _detect_mime_type(self, image_bytes: bytes) -> str:
+        """
+        Detect MIME type from image bytes.
+
+        Args:
+            image_bytes: Raw image bytes
+
+        Returns:
+            MIME type string
+        """
+        if image_bytes.startswith(b'\xff\xd8\xff'):
+            return 'image/jpeg'
+        elif image_bytes.startswith(b'\x89PNG'):
+            return 'image/png'
+        elif image_bytes[:4] == b'ftyp' or image_bytes[4:12] == b'ftypheic':
+            return 'image/heic'
+        else:
+            return 'image/jpeg'  # Default fallback
 
     async def close(self) -> None:
         """Close the Mistral client."""

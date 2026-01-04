@@ -1,0 +1,33 @@
+MEAT MASTER
+A.B.N. 98 661 817 634
+Tel: 0288108536
+Shop Q18 55-57 Queen Street Auburn Shopping Center
+Phone: 02 9749 2788
+Wechat: meatmasterwholesale
+
+TAX INVOICE
+Date: 04/01/2026
+Cashier: 10-彩华
+No: P2601040082
+Register: POS01
+
+猪梅头
+Pork Neck
+Preset Tare 5 Grams Removed
+4.200kg NET X $13.99/kg = $58.76
+
+美国排
+Pork American Ribs
+Preset Tare 5 Grams Removed
+1.130kg NET X $21.99/kg = $24.85
+
+SUB TOTAL: $83.61
+ROUNDING: -0.01
+TOTAL: $83.60
+GST INCLUDED IN TOTAL: $0.00
+CASH: $83.60
+BALANCE: $0.00
+Transaction: 04/01/2026 10:02:10
+
+* p 2
+0 0 8 2 *

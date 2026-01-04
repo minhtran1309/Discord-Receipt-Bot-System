@@ -6,6 +6,7 @@ import logging
 from bot.config import get_settings
 from bot.storage import Storage
 from bot.services.ocr import OCRService
+from bot.services.ai_extractor import AIExtractor
 from bot.services.guesser import ItemGuesser
 from bot.services.sheets import SheetsService
 from bot.cogs.receipt import ReceiptCog
@@ -44,6 +45,10 @@ class ReceiptBot(commands.Bot):
             api_key=self.settings.mistral_api_key,
             model=self.settings.mistral_ocr_model,
         )
+        self.ai_extractor = AIExtractor(
+            api_key=self.settings.openrouter_api_key,
+            model=self.settings.openrouter_model,
+        )
         self.guesser = ItemGuesser(
             api_key=self.settings.openrouter_api_key,
             model=self.settings.openrouter_model,
@@ -60,7 +65,7 @@ class ReceiptBot(commands.Bot):
 
         # Add cogs with error handling
         cogs_to_load = [
-            ("Receipt", ReceiptCog(self, self.ocr_service, self.storage, self.guesser, self.settings)),
+            ("Receipt", ReceiptCog(self, self.ocr_service, self.storage, self.guesser, self.ai_extractor, self.settings)),
             ("Guess", GuessCog(self, self.guesser, self.storage, self.settings)),
             ("Clerk", ClerkCog(self, self.sheets_service, self.storage)),
         ]

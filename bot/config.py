@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     mistral_api_key: str
     mistral_ocr_model: str = "mistral-ocr-latest"
 
-    # OpenRouter
+    # OpenRouter (for AI extraction and guessing)
     openrouter_api_key: str
     openrouter_model: str = "openai/gpt-4o-mini"
 
