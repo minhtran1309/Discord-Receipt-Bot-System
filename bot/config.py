@@ -14,11 +14,8 @@ class Settings(BaseSettings):
     # Mistral OCR
     mistral_api_key: str
     mistral_ocr_model: str = "mistral-ocr-latest"
-    ocr_table_format: str = "html"  # "html", "markdown", or None
-    ocr_extract_header: bool = True
-    ocr_use_structured_extraction: bool = True  # Enable/disable structured extraction
 
-    # OpenRouter
+    # OpenRouter (for AI extraction and guessing)
     openrouter_api_key: str
     openrouter_model: str = "openai/gpt-4o-mini"
 

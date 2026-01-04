@@ -15,6 +15,7 @@ class ReceiptItem(BaseModel):
     price: float = Field(gt=0, description="Item price as shown on receipt (final price after any discount)")
     discount: float = Field(default=0.0, description="Discount amount from separate discount column (0 if no discount)")
     sku: Optional[str] = Field(default=None, description="Product SKU/barcode if visible")
+    category: str = Field(default="Other", description="Product category (Produce, Meat, Dairy, Bakery, Pantry, Frozen, Beverage, Household, Other)")
     language: Optional[str] = Field(default="en", description="Detected language of item name")
 
     # AI guessing fields
