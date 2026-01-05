@@ -214,6 +214,174 @@ class ReceiptCog(commands.Cog):
         else:
             await interaction.response.send_message("Receipt not found.")
 
+    @receipt_group.command(name="view_store", description="View store purchases by month or year")
+    async def view_store(
+        self,
+        interaction: discord.Interaction,
+        store: str,
+        period: str = None,
+    ):
+        """View all TSV file contents for a specific store and time period.
+
+        Args:
+            store: Store name (e.g., "ALDI", "Woolworths")
+            period: Time period in YYYY-MM (month) or YYYY (year) format. Leave empty for all time.
+
+        Examples:
+            /receipt view_store store:ALDI period:2026-01
+            /receipt view_store store:Woolworths period:2026
+            /receipt view_store store:IGA
+        """
+        await interaction.response.defer()
+
+        from pathlib import Path
+        import csv
+        from datetime import datetime
+
+        try:
+            # Get items directory
+            items_dir = Path(self.storage.data_dir) / "items"
+            if not items_dir.exists():
+                await interaction.followup.send("❌ No purchase data found.")
+                return
+
+            # Find all TSV files for this store
+            store_normalized = store.lower().replace(" ", "_")
+            all_tsv_files = sorted(items_dir.glob("*.tsv"))
+
+            # Filter by store and period
+            matching_files = []
+            for tsv_file in all_tsv_files:
+                # Check if store name is in filename
+                if store_normalized not in tsv_file.name.lower():
+                    continue
+
+                # Extract date from filename (format: YYYY-MM-DD_HHMM_store_items.tsv)
+                try:
+                    date_part = tsv_file.name.split("_")[0]  # YYYY-MM-DD
+                    file_date = datetime.strptime(date_part, "%Y-%m-%d")
+
+                    # Filter by period if specified
+                    if period:
+                        if len(period) == 4:  # Year only (YYYY)
+                            if file_date.year != int(period):
+                                continue
+                        elif len(period) == 7:  # Year-Month (YYYY-MM)
+                            if file_date.strftime("%Y-%m") != period:
+                                continue
+                        else:
+                            await interaction.followup.send("❌ Invalid period format. Use YYYY-MM or YYYY")
+                            return
+
+                    matching_files.append(tsv_file)
+                except (ValueError, IndexError):
+                    continue
+
+            if not matching_files:
+                period_text = f" for {period}" if period else ""
+                await interaction.followup.send(f"❌ No purchases found for {store}{period_text}")
+                return
+
+            # Read and aggregate all items
+            all_items = []
+            total_spent = 0.0
+
+            for tsv_file in matching_files:
+                with open(tsv_file, "r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f, delimiter="\t")
+                    for row in reader:
+                        all_items.append(row)
+                        try:
+                            price = float(row.get("price", 0))
+                            total_spent += price
+                        except ValueError:
+                            pass
+
+            if not all_items:
+                await interaction.followup.send(f"❌ No items found in TSV files")
+                return
+
+            # Create summary statistics
+            period_text = f" ({period})" if period else " (All Time)"
+            category_totals = {}
+            for item in all_items:
+                category = item.get("category", "Other")
+                try:
+                    price = float(item.get("price", 0))
+                    category_totals[category] = category_totals.get(category, 0) + price
+                except ValueError:
+                    pass
+
+            # Create embed
+            embed = discord.Embed(
+                title=f"📊 {store} Purchases{period_text}",
+                color=0x3498db,
+                timestamp=datetime.now()
+            )
+
+            # Summary stats
+            embed.add_field(
+                name="Summary",
+                value=f"**Total Items:** {len(all_items)}\n"
+                      f"**Total Spent:** ${total_spent:.2f}\n"
+                      f"**Receipts:** {len(matching_files)}",
+                inline=False
+            )
+
+            # Category breakdown
+            if category_totals:
+                category_text = "\n".join(
+                    f"• {cat}: ${amt:.2f}"
+                    for cat, amt in sorted(category_totals.items(), key=lambda x: x[1], reverse=True)
+                )
+                embed.add_field(
+                    name="💰 By Category",
+                    value=category_text[:1024],  # Discord field limit
+                    inline=False
+                )
+
+            # Recent items (last 10)
+            recent_items = all_items[-10:] if len(all_items) > 10 else all_items
+            items_text = "\n".join(
+                f"• **{item.get('raw_name', 'Unknown')[:30]}** - ${item.get('price', '0')}\n"
+                f"  _{item.get('category', 'Other')}_ | {item.get('date', 'N/A')}"
+                for item in reversed(recent_items)
+            )
+            embed.add_field(
+                name=f"🛒 Recent Items (Last {len(recent_items)})",
+                value=items_text[:1024] if items_text else "None",
+                inline=False
+            )
+
+            # Top items by spending
+            item_spending = {}
+            for item in all_items:
+                name = item.get("guessed_name") or item.get("raw_name", "Unknown")
+                try:
+                    price = float(item.get("price", 0))
+                    item_spending[name] = item_spending.get(name, 0) + price
+                except ValueError:
+                    pass
+
+            if item_spending:
+                top_items = sorted(item_spending.items(), key=lambda x: x[1], reverse=True)[:5]
+                top_text = "\n".join(
+                    f"• {name[:35]}: ${total:.2f}"
+                    for name, total in top_items
+                )
+                embed.add_field(
+                    name="🏆 Top Items by Spending",
+                    value=top_text[:1024],
+                    inline=False
+                )
+
+            embed.set_footer(text=f"Data from {len(matching_files)} receipt(s)")
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error reading purchase data: {e}")
+
     def _parse_receipt(self, ocr_text: str) -> Receipt:
         """Parse OCR text into a Receipt object (basic implementation)."""
         lines = [line.strip() for line in ocr_text.strip().split("\n") if line.strip()]
