@@ -10,7 +10,7 @@ from bot.services.ai_extractor import AIExtractor
 from bot.services.guesser import ItemGuesser
 from bot.services.sheets import SheetsService
 from bot.cogs.receipt import ReceiptCog
-from bot.cogs.guess import GuessCog
+# from bot.cogs.guess import GuessCog
 from bot.cogs.clerk import ClerkCog
 
 
@@ -64,9 +64,14 @@ class ReceiptBot(commands.Bot):
         logger.info("Loading cogs...")
 
         # Add cogs with error handling
+        # cogs_to_load = [
+        #     ("Receipt", ReceiptCog(self, self.ocr_service, self.storage, self.guesser, self.ai_extractor, self.settings)),
+        #     # ("Guess", GuessCog(self, self.guesser, self.storage, self.settings)),
+        #     ("Clerk", ClerkCog(self, self.sheets_service, self.storage)),
+        # ]
         cogs_to_load = [
             ("Receipt", ReceiptCog(self, self.ocr_service, self.storage, self.guesser, self.ai_extractor, self.settings)),
-            ("Guess", GuessCog(self, self.guesser, self.storage, self.settings)),
+            # ("Guess", GuessCog(self, self.guesser, self.storage, self.settings)),
             ("Clerk", ClerkCog(self, self.sheets_service, self.storage)),
         ]
 
@@ -111,7 +116,7 @@ class ReceiptBot(commands.Bot):
     async def close(self):
         """Cleanup when bot shuts down."""
         await self.ocr_service.close()
-        await self.guesser.close()
+        # await self.guesser.close()
         await super().close()
 
 
