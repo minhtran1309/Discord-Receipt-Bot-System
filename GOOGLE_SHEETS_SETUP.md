@@ -145,6 +145,8 @@ Click on cell **A1** and enter the following headers across the first row:
 |----|----|----|----|----|----|----|-----|
 | Date | Store | Item | Quantity | Unit | Price | Category | SKU |
 
+**Important:** The bot will sync data to these exact columns in this order. Make sure your headers match exactly.
+
 **Optional: Format the header row**
 1. Select row 1 (click on the row number "1")
 2. Make it **bold** (Ctrl/Cmd + B)
@@ -446,7 +448,8 @@ Once your setup is complete, you can use all Clerk bot commands:
 
 | Command | Description |
 |---------|-------------|
-| `/clerk sync` | Sync all verified receipts to Google Sheets |
+| `/clerk sync` | Sync verified receipts to Google Sheets (prevents duplicates) |
+| `/clerk status` | Check sync status of all receipts |
 | `/clerk spent <product> [month]` | Query total spending on a product |
 | `/clerk monthly [YYYY-MM]` | Get monthly expense summary |
 | `/clerk report <start> <end>` | Generate expense report for date range |
@@ -459,6 +462,226 @@ Once your setup is complete, you can use all Clerk bot commands:
 4. Query spending: `/clerk spent milk`
 5. Monthly summary: `/clerk monthly 2026-01`
 6. Generate report: `/clerk report 2026-01-01 2026-01-31`
+
+---
+
+## Dual-Sync System: Preventing Duplicate Entries
+
+The bot includes a **dual-sync system** that prevents duplicate data from being added to Google Sheets when you run `/clerk sync` multiple times.
+
+### How It Works
+
+**Problem**: Before the dual-sync system, running `/clerk sync` multiple times would append the same receipt data repeatedly, creating duplicate entries in Google Sheets.
+
+**Solution**: The bot now tracks which receipts have been synced using a `synced_to_sheets` field in each receipt JSON file.
+
+#### Sync Behavior
+
+When you run `/clerk sync`, the bot:
+
+1. **Loads all receipts** from the `data/receipts/` directory
+2. **Filters receipts** to find ones that are:
+   - ✅ Verified (`verified=true`)
+   - ✅ Not yet synced (`synced_to_sheets=false`)
+3. **Syncs only unsynced receipts** to Google Sheets
+4. **Marks receipts as synced** after successful sync (`synced_to_sheets=true`)
+5. **Shows detailed statistics** about what was synced
+
+#### User Experience Examples
+
+**First Sync** (5 verified receipts):
+```
+User: /clerk sync
+Bot: ✅ Sync Complete
+     Newly Synced: 5 receipts
+     Already Synced: 0 receipts
+     Total Verified: 5 receipts
+
+     New data has been added to Google Sheets.
+```
+
+**Subsequent Sync** (no new receipts):
+```
+User: /clerk sync
+Bot: ✅ All verified receipts are already synced!
+
+     Already synced: 5 receipts
+
+     Use /receipt verify <filename> to verify more receipts.
+```
+
+**Partial Sync** (2 new verified receipts):
+```
+User: /clerk sync
+Bot: ✅ Sync Complete
+     Newly Synced: 2 receipts
+     Already Synced: 5 receipts
+     Total Verified: 7 receipts
+
+     New data has been added to Google Sheets.
+```
+
+#### Checking Sync Status
+
+Use `/clerk status` to view the sync state of all receipts:
+
+```
+User: /clerk status
+Bot: 📊 Receipt Sync Status
+
+     ✅ Synced to Sheets: 7 receipts
+     ⏳ Verified (Not Synced): 2 receipts
+     ⏸️ Unverified: 3 receipts
+     📁 Total Receipts: 12 receipts
+
+     2 receipts ready to sync. Use /clerk sync to sync them.
+```
+
+### Migrating Existing Receipts
+
+If you have existing receipts from before the dual-sync system was implemented, you need to run a migration script to add the `synced_to_sheets` field.
+
+**Run the migration:**
+```bash
+python migrate_sync_status.py
+```
+
+**Migration Options:**
+
+**Option 1: Mark as NOT synced** (`synced_to_sheets=False`)
+- Use this if you **haven't synced receipts yet** OR want to re-sync all receipts
+- ⚠️ **WARNING**: If you've already synced receipts to Google Sheets, this will create duplicates
+
+**Option 2: Mark as SYNCED** (`synced_to_sheets=True`) - **RECOMMENDED**
+- Use this if you've **already synced receipts** to Google Sheets
+- Prevents duplicates but won't re-sync existing data
+- Future verified receipts will sync normally
+
+**Example migration output:**
+```
+==============================================================
+Receipt Sync Status Migration
+==============================================================
+Found 8 receipt files
+
+How should existing receipts be marked?
+1. Mark as NOT synced (synced_to_sheets=False)
+   - Use if you haven't synced receipts yet OR want to re-sync all
+   - WARNING: May create duplicates if already synced
+
+2. Mark as SYNCED (synced_to_sheets=True)
+   - Use if you've already synced receipts to Google Sheets
+   - Prevents duplicates but won't re-sync existing data
+
+Enter choice (1 or 2): 2
+
+Will mark receipts as: synced_to_sheets=True
+
+✓ Updated [✅ SYNCED]: 2026-01-02_1548_bunnings_warehouse.json
+✓ Updated [✅ SYNCED]: 2026-01-03_1234_woolworths.json
+...
+
+==============================================================
+Migration Complete!
+==============================================================
+Updated: 8 receipts
+Skipped: 0 receipts (already had synced_to_sheets field)
+Total: 8 receipt files
+
+✅ All receipts marked as SYNCED.
+   Next /clerk sync will only sync NEW verified receipts.
+```
+
+### Testing the Dual-Sync System
+
+You can test the dual-sync system with the provided test script:
+
+```bash
+python test_clerk_sync.py
+```
+
+This script will:
+- Show all receipts and their sync status
+- Display counts of verified (synced), verified (unsynced), and unverified receipts
+- Attempt to sync only unsynced verified receipts
+- Provide detailed error messages if sync fails
+
+**Example test output:**
+```
+============================================================
+Clerk Sync Test
+============================================================
+Credentials path: credentials.json
+Spreadsheet ID: 1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t
+Data directory: data
+
+Loading receipts...
+Found 8 receipt files
+
+✓ VERIFIED (not synced): 2026-01-05_1430_coles.json
+  Store: Coles
+  Date: 2026-01-05
+  Items: 12
+
+↻ VERIFIED (already synced): 2026-01-02_1548_bunnings_warehouse.json
+↻ VERIFIED (already synced): 2026-01-03_1234_woolworths.json
+
+Total verified (not synced): 1
+Total verified (already synced): 2
+Total unverified: 5
+
+============================================================
+Attempting to sync verified receipts to Google Sheets...
+============================================================
+
+[Sheets] Connecting to Google Sheets...
+[Sheets] Syncing receipt: 2026-01-05_1430_coles.json (12 items)
+[Sheets] Appending 12 rows to worksheet
+[Sheets] Successfully appended rows
+
+============================================================
+✅ SUCCESS! Synced 1 receipts to Google Sheets
+============================================================
+```
+
+### Troubleshooting Sync Issues
+
+#### Issue: Duplicate data in Google Sheets
+
+**Cause:** You ran `/clerk sync` before migrating existing receipts, or you chose option 1 when you should have chosen option 2.
+
+**Solution:**
+1. Manually delete duplicate rows from Google Sheets
+2. Run migration script again with option 2 (mark as SYNCED)
+3. Future syncs will not create duplicates
+
+#### Issue: Receipts not syncing
+
+**Cause:** Receipts are either not verified or already marked as synced.
+
+**Solution:**
+1. Run `/clerk status` to check receipt states
+2. Verify receipts with `/receipt verify <filename>`
+3. Run `/clerk sync` again
+
+#### Issue: Want to force re-sync all receipts
+
+**Cause:** You need to re-sync all verified receipts (e.g., after manual deletion from sheets).
+
+**Solution:**
+1. Run migration script: `python migrate_sync_status.py`
+2. Choose option 1 (mark as NOT synced)
+3. Run `/clerk sync`
+4. ⚠️ **Note**: This will create duplicates if you haven't cleared Google Sheets
+
+### Benefits of Dual-Sync System
+
+- ✅ **Prevents duplicate data** when running `/clerk sync` multiple times
+- ✅ **Fast and efficient** - no extra API calls to Google Sheets
+- ✅ **Clear visibility** with `/clerk status` command
+- ✅ **Incremental syncing** - only syncs new verified receipts
+- ✅ **Works offline** for status checking
+- ✅ **Simple and reliable** - local tracking in JSON files
 
 ---
 
@@ -478,7 +701,9 @@ Before using the Clerk bot, verify you've completed all steps:
 - [ ] Updated GOOGLE_CREDENTIALS_PATH in .env
 - [ ] Updated GOOGLE_SPREADSHEET_ID in .env
 - [ ] Verified credentials.json is in .gitignore
+- [ ] Run migration script for existing receipts (if applicable)
 - [ ] Tested `/clerk sync` command successfully
+- [ ] Verified `/clerk status` shows correct sync states
 
 ---
 

@@ -89,3 +89,36 @@ class Storage:
             self._save_json(self.corrections_file, corrections)
             return True
         return False
+
+    def mark_receipt_synced(self, filename: str) -> bool:
+        """Mark a receipt as synced to Google Sheets.
+
+        Args:
+            filename: Receipt filename
+
+        Returns:
+            True if successful, False otherwise
+        """
+        receipt = self.load_receipt(filename)
+        if not receipt:
+            return False
+
+        receipt.synced_to_sheets = True
+        self.save_receipt(receipt)
+        return True
+
+    def list_unsynced_verified_receipts(self) -> list[Receipt]:
+        """Get all verified receipts that haven't been synced to sheets.
+
+        Returns:
+            List of verified, unsynced receipts
+        """
+        filenames = self.list_receipts()
+        unsynced = []
+
+        for filename in filenames:
+            receipt = self.load_receipt(filename)
+            if receipt and receipt.verified and not receipt.synced_to_sheets:
+                unsynced.append(receipt)
+
+        return unsynced
