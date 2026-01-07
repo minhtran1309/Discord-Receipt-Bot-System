@@ -22,7 +22,7 @@ class ClerkCog(commands.Cog):
     )
 
     @clerk_group.command(
-        name="sync", description="Sync all verified receipts to Google Sheets"
+        name="sync", description="Sync verified receipts to Google Sheets"
     )
     async def sync(self, interaction: discord.Interaction):
         """Sync verified receipts to Google Sheets."""
@@ -31,28 +31,87 @@ class ClerkCog(commands.Cog):
         try:
             # Load all receipts
             filenames = self.storage.list_receipts()
-            receipts = [
-                self.storage.load_receipt(f)
-                for f in filenames
-                if self.storage.load_receipt(f) and self.storage.load_receipt(f).verified
-            ]
+            print(f"[Clerk Sync] Found {len(filenames)} receipt files")
+
+            # Filter for verified and unsynced receipts
+            receipts = []
+            already_synced = 0
+
+            for f in filenames:
+                receipt = self.storage.load_receipt(f)
+                if not receipt:
+                    continue
+
+                if receipt.verified and not receipt.synced_to_sheets:
+                    receipts.append(receipt)
+                    print(f"[Clerk Sync] ✓ Verified & unsynced: {f}")
+                elif receipt.verified and receipt.synced_to_sheets:
+                    already_synced += 1
+                    print(f"[Clerk Sync] ↻ Already synced: {f}")
+                elif receipt:
+                    print(f"[Clerk Sync] ✗ Unverified receipt: {f}")
 
             if not receipts:
-                await interaction.followup.send("No verified receipts to sync.")
+                if already_synced > 0:
+                    await interaction.followup.send(
+                        f"✅ All verified receipts are already synced!\n\n"
+                        f"**Already synced**: {already_synced} receipts\n\n"
+                        f"Use `/receipt verify <filename>` to verify more receipts."
+                    )
+                else:
+                    await interaction.followup.send(
+                        "❌ No verified receipts to sync.\n\n"
+                        "Use `/receipt verify <filename>` to verify receipts first."
+                    )
                 return
 
-            # Sync to sheets
-            count = self.sheets.sync_multiple(receipts)
+            print(f"[Clerk Sync] Syncing {len(receipts)} verified receipts...")
 
+            # Sync to sheets
+            count, synced_filenames = self.sheets.sync_multiple(receipts)
+
+            # Mark receipts as synced
+            for filename in synced_filenames:
+                self.storage.mark_receipt_synced(filename)
+
+            print(f"[Clerk Sync] Successfully synced {count} receipts")
+
+            # Create detailed embed
             embed = discord.Embed(
-                title="Sync Complete",
-                description=f"Synced {count} verified receipts to Google Sheets",
+                title="✅ Sync Complete",
                 color=0x00FF00,
             )
+            embed.add_field(
+                name="Newly Synced",
+                value=f"{count} receipts",
+                inline=True
+            )
+            embed.add_field(
+                name="Already Synced",
+                value=f"{already_synced} receipts",
+                inline=True
+            )
+            embed.add_field(
+                name="Total Verified",
+                value=f"{count + already_synced} receipts",
+                inline=True
+            )
+
+            if count > 0:
+                embed.description = "New data has been added to Google Sheets."
+            else:
+                embed.description = "No new data to sync."
+
             await interaction.followup.send(embed=embed)
 
         except Exception as e:
-            await interaction.followup.send(f"Error syncing to Google Sheets: {e}")
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"[Clerk Sync] Error during sync:\n{error_details}")
+            await interaction.followup.send(
+                f"❌ Error syncing to Google Sheets:\n```{str(e)}```\n\n"
+                f"Check the bot console logs for more details."
+            )
 
     @clerk_group.command(
         name="spent", description="Query spending on a specific product"
@@ -176,6 +235,66 @@ class ClerkCog(commands.Cog):
         embed.add_field(name="Receipts", value=str(receipt_count), inline=True)
 
         await interaction.response.send_message(embed=embed)
+
+    @clerk_group.command(
+        name="status",
+        description="Check sync status of receipts"
+    )
+    async def status(self, interaction: discord.Interaction):
+        """Show sync status of all receipts."""
+        await interaction.response.defer()
+
+        filenames = self.storage.list_receipts()
+
+        verified_synced = 0
+        verified_unsynced = 0
+        unverified = 0
+
+        for f in filenames:
+            receipt = self.storage.load_receipt(f)
+            if not receipt:
+                continue
+
+            if receipt.verified and receipt.synced_to_sheets:
+                verified_synced += 1
+            elif receipt.verified:
+                verified_unsynced += 1
+            else:
+                unverified += 1
+
+        total = verified_synced + verified_unsynced + unverified
+
+        embed = discord.Embed(
+            title="📊 Receipt Sync Status",
+            color=0x3498db,
+        )
+        embed.add_field(
+            name="✅ Synced to Sheets",
+            value=f"{verified_synced} receipts",
+            inline=False
+        )
+        embed.add_field(
+            name="⏳ Verified (Not Synced)",
+            value=f"{verified_unsynced} receipts",
+            inline=False
+        )
+        embed.add_field(
+            name="⏸️ Unverified",
+            value=f"{unverified} receipts",
+            inline=False
+        )
+        embed.add_field(
+            name="📁 Total Receipts",
+            value=f"{total} receipts",
+            inline=False
+        )
+
+        if verified_unsynced > 0:
+            embed.description = f"**{verified_unsynced} receipts** ready to sync. Use `/clerk sync` to sync them."
+        else:
+            embed.description = "All verified receipts are synced!"
+
+        await interaction.followup.send(embed=embed)
 
 
 async def setup(bot: commands.Bot):

@@ -39,6 +39,7 @@ class Receipt(BaseModel):
     datetime: datetime
     processed_at: datetime = Field(default_factory=datetime.now)
     verified: bool = False
+    synced_to_sheets: bool = Field(default=False, description="Whether this receipt has been synced to Google Sheets")
     raw_ocr_text: str
     items: list[ReceiptItem]
     total: float
