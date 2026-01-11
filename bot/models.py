@@ -59,3 +59,31 @@ class GuessResult(BaseModel):
 
     product_name: str
     confidence: float
+
+
+class BudgetEntry(BaseModel):
+    """Single eating out budget entry."""
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    date: datetime
+    amount: float = Field(gt=0, description="Amount spent on eating out or takeaway drink")
+    description: str = Field(default="Eating out / Takeaway drink")
+    month: str = Field(description="Month in YYYY-MM format")
+    created_at: datetime = Field(default_factory=datetime.now)
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+        }
+
+
+class MonthlyBudget(BaseModel):
+    """Monthly budget tracking."""
+
+    month: str = Field(description="Month in YYYY-MM format")
+    budget_limit: float = Field(default=100.0, description="Monthly budget limit")
+    spent: float = Field(default=0.0, description="Total spent this month")
+    remaining: float = Field(default=100.0, description="Remaining budget")
+    entries: list[BudgetEntry] = Field(default_factory=list)
+    overspent: bool = Field(default=False, description="Whether budget has been exceeded")
+    surplus: float = Field(default=0.0, description="Positive surplus if under budget")

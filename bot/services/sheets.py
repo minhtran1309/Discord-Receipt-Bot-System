@@ -41,6 +41,78 @@ class SheetsService:
         self.worksheet = spreadsheet.sheet1
         print(f"[Sheets] Using worksheet: {self.worksheet.title}")
 
+    def get_worksheet(self, worksheet_name: str):
+        """Get a specific worksheet by name.
+
+        Args:
+            worksheet_name: Name of the worksheet/tab
+
+        Returns:
+            Worksheet object
+        """
+        if not self.client:
+            self.connect()
+
+        spreadsheet = self.client.open_by_key(self.spreadsheet_id)
+
+        try:
+            worksheet = spreadsheet.worksheet(worksheet_name)
+            print(f"[Sheets] Accessed worksheet: {worksheet_name}")
+            return worksheet
+        except gspread.WorksheetNotFound:
+            print(f"[Sheets] Worksheet '{worksheet_name}' not found")
+            raise
+
+    def append_row(self, worksheet_name: str, row: list):
+        """Append a single row to a worksheet.
+
+        Args:
+            worksheet_name: Name of worksheet/tab
+            row: List of values for the row
+        """
+        worksheet = self.get_worksheet(worksheet_name)
+        worksheet.append_row(row)
+        print(f"[Sheets] Appended row to {worksheet_name}")
+
+    def get_all_records(self, worksheet_name: str) -> list[dict]:
+        """Get all records from a worksheet as list of dicts.
+
+        Args:
+            worksheet_name: Name of worksheet/tab
+
+        Returns:
+            List of dicts with column headers as keys
+        """
+        worksheet = self.get_worksheet(worksheet_name)
+        return worksheet.get_all_records()
+
+    def get_cell_value(self, worksheet_name: str, row: int, col: int):
+        """Get value from specific cell.
+
+        Args:
+            worksheet_name: Name of worksheet/tab
+            row: Row number (1-indexed)
+            col: Column number (1-indexed)
+
+        Returns:
+            Cell value
+        """
+        worksheet = self.get_worksheet(worksheet_name)
+        return worksheet.cell(row, col).value
+
+    def update_cell(self, worksheet_name: str, row: int, col: int, value):
+        """Update a specific cell.
+
+        Args:
+            worksheet_name: Name of worksheet/tab
+            row: Row number (1-indexed)
+            col: Column number (1-indexed)
+            value: New cell value
+        """
+        worksheet = self.get_worksheet(worksheet_name)
+        worksheet.update_cell(row, col, value)
+        print(f"[Sheets] Updated cell ({row},{col}) in {worksheet_name}")
+
     def sync_receipt(self, receipt: Receipt) -> bool:
         """Sync a single receipt to Google Sheets.
 
