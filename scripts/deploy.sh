@@ -4,7 +4,12 @@ set -e
 ENVIRONMENT=${1:-production}
 DEPLOY_DIR="/opt/discord-bot"
 BACKUP_DIR="/opt/discord-bot/backups"
-SOURCE_DIR="/tmp/discord-bot-deploy"
+# Use home directory if /tmp path doesn't exist
+if [ -d "/tmp/discord-bot-deploy" ]; then
+    SOURCE_DIR="/tmp/discord-bot-deploy"
+else
+    SOURCE_DIR="$HOME/discord-bot-deploy"
+fi
 
 echo "=== Deploying Discord Bot to $ENVIRONMENT environment ==="
 
@@ -43,7 +48,11 @@ rsync -av --delete \
 echo "Setting permissions..."
 chown -R botuser:botuser $DEPLOY_DIR
 chmod -R 755 $DEPLOY_DIR
-chmod 700 $DEPLOY_DIR/data $DEPLOY_DIR/data-dev 2>/dev/null || true
+
+# Create data directories if they don't exist
+mkdir -p $DEPLOY_DIR/data $DEPLOY_DIR/data-dev
+chown botuser:botuser $DEPLOY_DIR/data $DEPLOY_DIR/data-dev
+chmod 700 $DEPLOY_DIR/data $DEPLOY_DIR/data-dev
 
 # Update conda environment
 echo "Updating conda environment..."
