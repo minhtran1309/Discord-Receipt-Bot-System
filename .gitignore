@@ -35,6 +35,9 @@ discord_env/
 
 # Environment variables
 .env
+.env.*
+.env.production
+.env.development
 
 # Data files
 data/receipts/*.json
@@ -42,7 +45,12 @@ data/corrections.json
 
 # Google credentials
 credentials.json
+credentials/
 *.json
+
+# Deployment backups
+backups/
+*.tar.gz
 
 # Logs
 *.log
