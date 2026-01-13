@@ -39,6 +39,64 @@ class ReceiptCog(commands.Cog):
         name="receipt", description="Receipt processing commands"
     )
 
+    def _format_items_toon(self, items: list[ReceiptItem], max_items: int = 10) -> str:
+        """Format receipt items in TOON (readable list) format.
+
+        Args:
+            items: List of ReceiptItem objects
+            max_items: Maximum number of items to display (default: 10)
+
+        Returns:
+            Formatted string for Discord embed
+        """
+        if not items:
+            return "No items found"
+
+        lines = []
+
+        for idx, item in enumerate(items[:max_items], start=1):
+            # Confidence emoji
+            if item.confidence is not None:
+                if item.confidence >= 0.90:
+                    conf_emoji = "✅"
+                elif item.confidence >= 0.70:
+                    conf_emoji = "⚠️"
+                else:
+                    conf_emoji = "❌"
+                conf_str = f"{conf_emoji} ({item.confidence:.0%})"
+            else:
+                conf_str = "N/A"
+
+            # Item name (prefer confirmed_name, then guessed_name, fallback to raw_name)
+            display_name = item.confirmed_name or item.guessed_name or item.raw_name
+
+            # Build item line
+            lines.append(f"**{idx}. {display_name}** | {item.category}")
+
+            # Quantity and unit
+            if item.quantity != 1 or item.unit != "ea":
+                lines.append(f"   ├─ Qty: {item.quantity} {item.unit}")
+
+            # Price with discount
+            if item.discount > 0:
+                original_price = item.price + item.discount
+                lines.append(f"   ├─ Price: ~~${original_price:.2f}~~ ${item.price:.2f} (saved ${item.discount:.2f})")
+            else:
+                lines.append(f"   ├─ Price: ${item.price:.2f}")
+
+            # Confidence score
+            lines.append(f"   └─ Confidence: {conf_str}")
+
+            # Add spacing between items
+            if idx < min(len(items), max_items):
+                lines.append("")
+
+        # Add "more items" indicator
+        if len(items) > max_items:
+            lines.append(f"_... and {len(items) - max_items} more items_")
+
+        return "\n".join(lines)
+
     @receipt_group.command(name="process", description="Upload and process a receipt image")
     async def process(
         self, interaction: discord.Interaction, image: discord.Attachment
@@ -95,50 +153,31 @@ class ReceiptCog(commands.Cog):
             # Save items to TSV file
             self._save_items_to_tsv(parsed)
 
-            # Step 6: Send final result with table
+            # Step 6: Send final result with TOON format
             embed = discord.Embed(
                 title="✅ Receipt Processed & Items Guessed",
                 color=0x00FF00,
             )
+
+            # Summary statistics
             embed.add_field(name="Store", value=parsed.store, inline=True)
+            embed.add_field(name="Total Items", value=len(parsed.items), inline=True)
             embed.add_field(name="Total", value=f"${parsed.total:.2f}", inline=True)
-            embed.add_field(name="Items", value=len(parsed.items), inline=True)
-            embed.add_field(name="Needs Review", value=needs_review, inline=True)
             embed.add_field(name="Saved as", value=f"`{filename}`", inline=False)
 
-            # Build table-like display of items
+            # Items in TOON format
             if parsed.items:
-                # Create table header
-                table_lines = [
-                    "```",
-                    f"{'Raw Name':<20} {'Guessed Name':<25} {'Conf':<6} {'Review':<6}",
-                    "-" * 63
-                ]
+                items_display = self._format_items_toon(parsed.items, max_items=15)
+                embed.add_field(name="📋 Items Details", value=items_display, inline=False)
 
-                # Add each item as a row
-                for item in parsed.items[:10]:  # Limit to first 10 items
-                    raw = (item.raw_name[:18] + "..") if len(item.raw_name) > 20 else item.raw_name
-                    guessed = (item.guessed_name[:23] + "..") if item.guessed_name and len(item.guessed_name) > 25 else (item.guessed_name or "N/A")
-                    conf = f"{item.confidence:.2f}" if item.confidence is not None else "N/A"
-                    review = "⚠️" if item.needs_review else "✓"
-
-                    table_lines.append(f"{raw:<20} {guessed:<25} {conf:<6} {review:<6}")
-
-                if len(parsed.items) > 10:
-                    table_lines.append(f"\n... and {len(parsed.items) - 10} more items")
-
-                table_lines.append("```")
-
-                embed.add_field(
-                    name="Items Details",
-                    value="\n".join(table_lines),
-                    inline=False
-                )
-
+            # Show needs review warning if applicable
             if needs_review > 0:
                 embed.add_field(
                     name="⚠️ Low Confidence Items",
-                    value=f"{needs_review} items need review. Use `/guess correct` to fix.",
+                    value=(
+                        f"{needs_review} items need review.\n"
+                        f"Use `/receipt correct_name <item_number> <new_name>` to fix."
+                    ),
                     inline=False
                 )
 
@@ -167,7 +206,7 @@ class ReceiptCog(commands.Cog):
 
     @receipt_group.command(name="show", description="Display a specific receipt")
     async def show(self, interaction: discord.Interaction, filename: str):
-        """Show details of a specific receipt."""
+        """Show details of a specific receipt with TOON format."""
         receipt = self.storage.load_receipt(filename)
 
         if not receipt:
@@ -175,20 +214,38 @@ class ReceiptCog(commands.Cog):
             return
 
         embed = discord.Embed(
-            title=f"Receipt: {receipt.store}",
-            description=f"Date: {receipt.datetime.strftime('%Y-%m-%d %H:%M')}",
+            title=f"🧾 Receipt: {receipt.store}",
+            description=f"**Date**: {receipt.datetime.strftime('%Y-%m-%d %H:%M')}",
             color=0x00FF00 if receipt.verified else 0xFFFF00,
         )
 
-        # Add items
-        items_text = "\n".join(
-            f"• {item.raw_name}: ${item.price:.2f}" for item in receipt.items[:10]
-        )
-        embed.add_field(name="Items", value=items_text or "None", inline=False)
+        # Summary fields
+        embed.add_field(name="Total Items", value=len(receipt.items), inline=True)
         embed.add_field(name="Total", value=f"${receipt.total:.2f}", inline=True)
         embed.add_field(
-            name="Verified", value="✓" if receipt.verified else "✗", inline=True
+            name="Status",
+            value="✓ Verified" if receipt.verified else "⏳ Unverified",
+            inline=True
         )
+
+        # Add items in TOON format
+        items_display = self._format_items_toon(receipt.items, max_items=10)
+        embed.add_field(name="📋 Items", value=items_display, inline=False)
+
+        # Show subtotal, tax, discount if available
+        details = []
+        if receipt.subtotal:
+            details.append(f"Subtotal: ${receipt.subtotal:.2f}")
+        if receipt.tax:
+            details.append(f"Tax: ${receipt.tax:.2f}")
+        if receipt.discount_total and receipt.discount_total > 0:
+            details.append(f"Discount: -${receipt.discount_total:.2f}")
+
+        if details:
+            embed.add_field(name="💵 Breakdown", value="\n".join(details), inline=False)
+
+        # Show filename at bottom
+        embed.set_footer(text=f"File: {filename}")
 
         await interaction.response.send_message(embed=embed)
 
@@ -231,6 +288,220 @@ class ReceiptCog(commands.Cog):
             await interaction.response.send_message(f"Receipt `{filename}` deleted.")
         else:
             await interaction.response.send_message("Receipt not found.")
+
+    @receipt_group.command(
+        name="correct_name",
+        description="Correct an item's name"
+    )
+    async def correct_name(
+        self,
+        interaction: discord.Interaction,
+        filename: str,
+        item_index: int,
+        new_name: str
+    ):
+        """Correct an item's guessed name.
+
+        Args:
+            filename: Receipt filename
+            item_index: Item number from the list (1-based)
+            new_name: Corrected item name
+        """
+        await interaction.response.defer()
+
+        # Load receipt
+        receipt = self.storage.load_receipt(filename)
+        if not receipt:
+            await interaction.followup.send("❌ Receipt not found.")
+            return
+
+        # Validate item index
+        if item_index < 1 or item_index > len(receipt.items):
+            await interaction.followup.send(
+                f"❌ Invalid item index. Must be between 1 and {len(receipt.items)}."
+            )
+            return
+
+        # Get item (convert to 0-based index)
+        item = receipt.items[item_index - 1]
+        old_name = item.guessed_name or item.raw_name
+
+        # Update item
+        item.confirmed_name = new_name
+        item.confidence = 1.0  # User confirmed, so 100% confidence
+        item.needs_review = False
+
+        # Save correction to corrections.json for future use
+        self.storage.save_correction(item.raw_name, receipt.store, new_name)
+
+        # Update guesser's cache
+        key = f"{item.raw_name}|{receipt.store}"
+        self.guesser.corrections[key] = new_name
+
+        # Save updated receipt
+        self.storage.save_receipt(receipt)
+
+        # Send confirmation
+        embed = discord.Embed(
+            title="✅ Name Corrected",
+            color=0x00FF00
+        )
+        embed.add_field(
+            name="Item",
+            value=f"**{item_index}. {item.raw_name}**",
+            inline=False
+        )
+        embed.add_field(name="Old Name", value=old_name, inline=True)
+        embed.add_field(name="New Name", value=new_name, inline=True)
+        embed.add_field(
+            name="Note",
+            value=f"Correction saved to `corrections.json` for future receipts from {receipt.store}",
+            inline=False
+        )
+
+        await interaction.followup.send(embed=embed)
+
+    @receipt_group.command(
+        name="correct_price",
+        description="Correct an item's price"
+    )
+    async def correct_price(
+        self,
+        interaction: discord.Interaction,
+        filename: str,
+        item_index: int,
+        new_price: float
+    ):
+        """Correct an item's price.
+
+        Args:
+            filename: Receipt filename
+            item_index: Item number from the list (1-based)
+            new_price: Corrected price
+        """
+        await interaction.response.defer()
+
+        # Load receipt
+        receipt = self.storage.load_receipt(filename)
+        if not receipt:
+            await interaction.followup.send("❌ Receipt not found.")
+            return
+
+        # Validate item index
+        if item_index < 1 or item_index > len(receipt.items):
+            await interaction.followup.send(
+                f"❌ Invalid item index. Must be between 1 and {len(receipt.items)}."
+            )
+            return
+
+        # Validate price
+        if new_price <= 0:
+            await interaction.followup.send("❌ Price must be greater than 0.")
+            return
+
+        # Get item
+        item = receipt.items[item_index - 1]
+        old_price = item.price
+
+        # Update item price
+        item.price = new_price
+
+        # Recalculate receipt total
+        receipt.total = sum(i.price * i.quantity for i in receipt.items)
+
+        # Save updated receipt
+        self.storage.save_receipt(receipt)
+
+        # Send confirmation
+        embed = discord.Embed(
+            title="✅ Price Corrected",
+            color=0x00FF00
+        )
+        embed.add_field(
+            name="Item",
+            value=f"**{item_index}. {item.guessed_name or item.raw_name}**",
+            inline=False
+        )
+        embed.add_field(name="Old Price", value=f"${old_price:.2f}", inline=True)
+        embed.add_field(name="New Price", value=f"${new_price:.2f}", inline=True)
+        embed.add_field(
+            name="New Total",
+            value=f"${receipt.total:.2f}",
+            inline=False
+        )
+
+        await interaction.followup.send(embed=embed)
+
+    @receipt_group.command(
+        name="correct_category",
+        description="Correct an item's category"
+    )
+    async def correct_category(
+        self,
+        interaction: discord.Interaction,
+        filename: str,
+        item_index: int,
+        new_category: str
+    ):
+        """Correct an item's category.
+
+        Args:
+            filename: Receipt filename
+            item_index: Item number from the list (1-based)
+            new_category: New category (Produce, Meat, Dairy, Bakery, Pantry, Frozen, Beverage, Household, Other)
+        """
+        await interaction.response.defer()
+
+        # Valid categories
+        valid_categories = [
+            "Produce", "Meat", "Dairy", "Bakery", "Pantry",
+            "Frozen", "Beverage", "Household", "Other"
+        ]
+
+        # Validate category
+        if new_category not in valid_categories:
+            await interaction.followup.send(
+                f"❌ Invalid category. Must be one of: {', '.join(valid_categories)}"
+            )
+            return
+
+        # Load receipt
+        receipt = self.storage.load_receipt(filename)
+        if not receipt:
+            await interaction.followup.send("❌ Receipt not found.")
+            return
+
+        # Validate item index
+        if item_index < 1 or item_index > len(receipt.items):
+            await interaction.followup.send(
+                f"❌ Invalid item index. Must be between 1 and {len(receipt.items)}."
+            )
+            return
+
+        # Get item
+        item = receipt.items[item_index - 1]
+        old_category = item.category
+
+        # Update category
+        item.category = new_category
+
+        # Save updated receipt
+        self.storage.save_receipt(receipt)
+
+        # Send confirmation
+        embed = discord.Embed(
+            title="✅ Category Corrected",
+            color=0x00FF00
+        )
+        embed.add_field(
+            name="Item",
+            value=f"**{item_index}. {item.guessed_name or item.raw_name}**",
+            inline=False
+        )
+        embed.add_field(name="Old Category", value=old_category, inline=True)
+        embed.add_field(name="New Category", value=new_category, inline=True)
+
+        await interaction.followup.send(embed=embed)
 
     @receipt_group.command(name="view_store", description="View store purchases by month or year")
     async def view_store(

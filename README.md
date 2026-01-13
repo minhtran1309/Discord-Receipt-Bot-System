@@ -64,9 +64,12 @@ A Discord bot for processing grocery receipts, identifying items using AI, and t
 |---------|-------------|
 | `/receipt process <image>` | Upload and process a receipt image with AI extraction |
 | `/receipt list` | List all processed receipts |
-| `/receipt show <filename>` | Display a specific receipt |
+| `/receipt show <filename>` | Display a specific receipt in readable TOON format |
 | `/receipt verify <filename>` | Mark receipt as verified |
 | `/receipt delete <filename>` | Delete a receipt |
+| `/receipt correct_name <filename> <item_index> <new_name>` | Correct an item's name |
+| `/receipt correct_price <filename> <item_index> <new_price>` | Correct an item's price |
+| `/receipt correct_category <filename> <item_index> <new_category>` | Correct an item's category |
 | `/receipt view_store <store> [period]` | View store purchases by month (YYYY-MM) or year (YYYY) with analytics |
 
 ### Expense Tracking & Budget Management
