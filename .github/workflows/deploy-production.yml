@@ -6,7 +6,7 @@ on:
   workflow_dispatch:  # Manual trigger
 
 env:
-  GCP_PROJECT_ID: GCP-discord-receipts-bot
+  GCP_PROJECT_ID: gcp-discord-receipt-bot
   GCP_ZONE: australia-southeast1-a
   GCP_INSTANCE: discord-bot-server
   DEPLOY_PATH: /opt/discord-bot
