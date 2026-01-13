@@ -5,6 +5,8 @@ from discord import app_commands
 from discord.ext import commands
 from bot.services.sheets import SheetsService
 from bot.storage import Storage
+from bot.budget_storage import BudgetStorage
+from bot.models import BudgetEntry
 from datetime import datetime
 
 
@@ -16,13 +18,14 @@ class ClerkCog(commands.Cog):
         self.bot = bot
         self.sheets = sheets
         self.storage = storage
+        self.budget_storage = BudgetStorage()
 
     clerk_group = app_commands.Group(
         name="clerk", description="Expense tracking and reporting commands"
     )
 
     @clerk_group.command(
-        name="sync", description="Sync all verified receipts to Google Sheets"
+        name="sync", description="Sync verified receipts to Google Sheets"
     )
     async def sync(self, interaction: discord.Interaction):
         """Sync verified receipts to Google Sheets."""
@@ -31,28 +34,87 @@ class ClerkCog(commands.Cog):
         try:
             # Load all receipts
             filenames = self.storage.list_receipts()
-            receipts = [
-                self.storage.load_receipt(f)
-                for f in filenames
-                if self.storage.load_receipt(f) and self.storage.load_receipt(f).verified
-            ]
+            print(f"[Clerk Sync] Found {len(filenames)} receipt files")
+
+            # Filter for verified and unsynced receipts
+            receipts = []
+            already_synced = 0
+
+            for f in filenames:
+                receipt = self.storage.load_receipt(f)
+                if not receipt:
+                    continue
+
+                if receipt.verified and not receipt.synced_to_sheets:
+                    receipts.append(receipt)
+                    print(f"[Clerk Sync] ✓ Verified & unsynced: {f}")
+                elif receipt.verified and receipt.synced_to_sheets:
+                    already_synced += 1
+                    print(f"[Clerk Sync] ↻ Already synced: {f}")
+                elif receipt:
+                    print(f"[Clerk Sync] ✗ Unverified receipt: {f}")
 
             if not receipts:
-                await interaction.followup.send("No verified receipts to sync.")
+                if already_synced > 0:
+                    await interaction.followup.send(
+                        f"✅ All verified receipts are already synced!\n\n"
+                        f"**Already synced**: {already_synced} receipts\n\n"
+                        f"Use `/receipt verify <filename>` to verify more receipts."
+                    )
+                else:
+                    await interaction.followup.send(
+                        "❌ No verified receipts to sync.\n\n"
+                        "Use `/receipt verify <filename>` to verify receipts first."
+                    )
                 return
 
-            # Sync to sheets
-            count = self.sheets.sync_multiple(receipts)
+            print(f"[Clerk Sync] Syncing {len(receipts)} verified receipts...")
 
+            # Sync to sheets
+            count, synced_filenames = self.sheets.sync_multiple(receipts)
+
+            # Mark receipts as synced
+            for filename in synced_filenames:
+                self.storage.mark_receipt_synced(filename)
+
+            print(f"[Clerk Sync] Successfully synced {count} receipts")
+
+            # Create detailed embed
             embed = discord.Embed(
-                title="Sync Complete",
-                description=f"Synced {count} verified receipts to Google Sheets",
+                title="✅ Sync Complete",
                 color=0x00FF00,
             )
+            embed.add_field(
+                name="Newly Synced",
+                value=f"{count} receipts",
+                inline=True
+            )
+            embed.add_field(
+                name="Already Synced",
+                value=f"{already_synced} receipts",
+                inline=True
+            )
+            embed.add_field(
+                name="Total Verified",
+                value=f"{count + already_synced} receipts",
+                inline=True
+            )
+
+            if count > 0:
+                embed.description = "New data has been added to Google Sheets."
+            else:
+                embed.description = "No new data to sync."
+
             await interaction.followup.send(embed=embed)
 
         except Exception as e:
-            await interaction.followup.send(f"Error syncing to Google Sheets: {e}")
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"[Clerk Sync] Error during sync:\n{error_details}")
+            await interaction.followup.send(
+                f"❌ Error syncing to Google Sheets:\n```{str(e)}```\n\n"
+                f"Check the bot console logs for more details."
+            )
 
     @clerk_group.command(
         name="spent", description="Query spending on a specific product"
@@ -176,6 +238,286 @@ class ClerkCog(commands.Cog):
         embed.add_field(name="Receipts", value=str(receipt_count), inline=True)
 
         await interaction.response.send_message(embed=embed)
+
+    @clerk_group.command(
+        name="status",
+        description="Check sync status of receipts"
+    )
+    async def status(self, interaction: discord.Interaction):
+        """Show sync status of all receipts."""
+        await interaction.response.defer()
+
+        filenames = self.storage.list_receipts()
+
+        verified_synced = 0
+        verified_unsynced = 0
+        unverified = 0
+
+        for f in filenames:
+            receipt = self.storage.load_receipt(f)
+            if not receipt:
+                continue
+
+            if receipt.verified and receipt.synced_to_sheets:
+                verified_synced += 1
+            elif receipt.verified:
+                verified_unsynced += 1
+            else:
+                unverified += 1
+
+        total = verified_synced + verified_unsynced + unverified
+
+        embed = discord.Embed(
+            title="📊 Receipt Sync Status",
+            color=0x3498db,
+        )
+        embed.add_field(
+            name="✅ Synced to Sheets",
+            value=f"{verified_synced} receipts",
+            inline=False
+        )
+        embed.add_field(
+            name="⏳ Verified (Not Synced)",
+            value=f"{verified_unsynced} receipts",
+            inline=False
+        )
+        embed.add_field(
+            name="⏸️ Unverified",
+            value=f"{unverified} receipts",
+            inline=False
+        )
+        embed.add_field(
+            name="📁 Total Receipts",
+            value=f"{total} receipts",
+            inline=False
+        )
+
+        if verified_unsynced > 0:
+            embed.description = f"**{verified_unsynced} receipts** ready to sync. Use `/clerk sync` to sync them."
+        else:
+            embed.description = "All verified receipts are synced!"
+
+        await interaction.followup.send(embed=embed)
+
+    @clerk_group.command(
+        name="special_treat",
+        description="Log eating out or takeaway drink expense"
+    )
+    async def special_treat(
+        self,
+        interaction: discord.Interaction,
+        amount: float
+    ):
+        """Log an eating out expense and update budget tracking.
+
+        Args:
+            amount: Amount spent on eating out or takeaway drink
+        """
+        await interaction.response.defer()
+
+        try:
+            # Validate amount
+            if amount <= 0:
+                await interaction.followup.send("❌ Amount must be greater than 0")
+                return
+
+            # Get current date and month
+            now = datetime.now()
+            month = now.strftime("%Y-%m")
+
+            # Create budget entry
+            entry = BudgetEntry(
+                date=now,
+                amount=amount,
+                month=month
+            )
+
+            # Save to local storage
+            filename = self.budget_storage.save_entry(entry)
+            print(f"[Budget] Saved entry: {filename}")
+
+            # Update Google Sheets (eat_out_2026 tab)
+            try:
+                row = [
+                    now.strftime("%Y-%m-%d"),  # Date
+                    now.strftime("%H:%M"),     # Time
+                    amount,                     # Amount
+                    "Eating out / Takeaway",    # Category
+                    month,                      # Month
+                ]
+                self.sheets.append_row("eat_out_2026", row)
+                print(f"[Budget] Updated Google Sheets: eat_out_2026")
+            except Exception as e:
+                print(f"[Budget] Error updating Google Sheets: {e}")
+                await interaction.followup.send(
+                    f"⚠️ Entry saved locally but failed to sync to Google Sheets:\n```{e}```"
+                )
+                return
+
+            # Get updated monthly budget
+            budget = self.budget_storage.get_monthly_budget(month)
+
+            # Create response embed
+            embed = discord.Embed(
+                title="🍔 Special Treat Logged",
+                color=0x00FF00 if not budget.overspent else 0xFF0000,
+                timestamp=now
+            )
+
+            embed.add_field(
+                name="Amount Spent",
+                value=f"${amount:.2f}",
+                inline=True
+            )
+            embed.add_field(
+                name="Date",
+                value=now.strftime("%Y-%m-%d %H:%M"),
+                inline=True
+            )
+
+            embed.add_field(
+                name=f"📊 {month} Budget Status",
+                value=(
+                    f"**Budget**: ${budget.budget_limit:.2f}\n"
+                    f"**Spent**: ${budget.spent:.2f}\n"
+                    f"**Remaining**: ${budget.remaining:.2f}"
+                ),
+                inline=False
+            )
+
+            # Add overspending warning or surplus message
+            if budget.overspent:
+                embed.add_field(
+                    name="⚠️ Budget Exceeded",
+                    value=(
+                        f"You've overspent by **${abs(budget.remaining):.2f}** this month!\n"
+                        f"I'll remind you about this when you sync grocery receipts."
+                    ),
+                    inline=False
+                )
+                embed.color = 0xFF0000  # Red
+            elif budget.remaining > 0:
+                embed.add_field(
+                    name="✅ Under Budget",
+                    value=(
+                        f"Great! You have **${budget.remaining:.2f}** left for {month}.\n"
+                        f"Unused budget will be added to Nov/Dec for holiday shopping!"
+                    ),
+                    inline=False
+                )
+
+            # Show year-to-date surplus
+            year_surplus = self.budget_storage.get_year_surplus(now.year)
+            if year_surplus > 0:
+                embed.add_field(
+                    name="🎄 Holiday Shopping Fund",
+                    value=f"**${year_surplus:.2f}** saved for Nov/Dec",
+                    inline=False
+                )
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"[Budget] Error: {error_details}")
+            await interaction.followup.send(
+                f"❌ Error logging special treat: {e}"
+            )
+
+    @clerk_group.command(
+        name="budget_status",
+        description="Check eating out budget status"
+    )
+    async def budget_status(
+        self,
+        interaction: discord.Interaction,
+        month: str = None
+    ):
+        """Check eating out budget status for a specific month.
+
+        Args:
+            month: Month in YYYY-MM format (default: current month)
+        """
+        await interaction.response.defer()
+
+        try:
+            # Default to current month
+            if not month:
+                month = datetime.now().strftime("%Y-%m")
+
+            # Validate format
+            try:
+                datetime.strptime(month, "%Y-%m")
+            except ValueError:
+                await interaction.followup.send(
+                    "❌ Invalid month format. Use YYYY-MM (e.g., 2026-01)"
+                )
+                return
+
+            # Get budget data
+            budget = self.budget_storage.get_monthly_budget(month)
+
+            # Create embed
+            embed = discord.Embed(
+                title=f"🍔 Eating Out Budget - {month}",
+                color=0x00FF00 if not budget.overspent else 0xFF0000,
+            )
+
+            embed.add_field(
+                name="💰 Budget Summary",
+                value=(
+                    f"**Budget**: ${budget.budget_limit:.2f}\n"
+                    f"**Spent**: ${budget.spent:.2f}\n"
+                    f"**Remaining**: ${budget.remaining:.2f}"
+                ),
+                inline=False
+            )
+
+            # Show entries
+            if budget.entries:
+                entries_text = "\n".join(
+                    f"• {entry.date:%Y-%m-%d %H:%M} - ${entry.amount:.2f}"
+                    for entry in budget.entries[-10:]  # Last 10 entries
+                )
+
+                if len(budget.entries) > 10:
+                    entries_text += f"\n\n... and {len(budget.entries) - 10} more"
+
+                embed.add_field(
+                    name=f"📝 Recent Entries ({len(budget.entries)} total)",
+                    value=entries_text,
+                    inline=False
+                )
+            else:
+                embed.add_field(
+                    name="📝 Entries",
+                    value="No eating out expenses logged this month",
+                    inline=False
+                )
+
+            # Show year surplus
+            year = int(month.split("-")[0])
+            year_surplus = self.budget_storage.get_year_surplus(year)
+            if year_surplus > 0:
+                embed.add_field(
+                    name="🎄 Holiday Shopping Fund",
+                    value=f"**${year_surplus:.2f}** saved for Nov/Dec",
+                    inline=False
+                )
+
+            # Add status message
+            if budget.overspent:
+                embed.description = f"⚠️ Budget exceeded by **${abs(budget.remaining):.2f}**"
+            elif budget.spent == 0:
+                embed.description = "✨ No spending this month - full budget available!"
+            else:
+                embed.description = f"✅ **${budget.remaining:.2f}** remaining for this month"
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error checking budget status: {e}")
 
 
 async def setup(bot: commands.Bot):

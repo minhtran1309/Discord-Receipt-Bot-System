@@ -8,6 +8,7 @@ from bot.services.ocr import OCRService
 from bot.services.ai_extractor import AIExtractor
 from bot.services.guesser import ItemGuesser
 from bot.storage import Storage
+from bot.budget_storage import BudgetStorage
 from bot.models import Receipt, ReceiptItem
 from bot.config import Settings
 import re
@@ -32,6 +33,7 @@ class ReceiptCog(commands.Cog):
         self.guesser = guesser
         self.ai_extractor = ai_extractor
         self.settings = settings
+        self.budget_storage = BudgetStorage()
 
     receipt_group = app_commands.Group(
         name="receipt", description="Receipt processing commands"
@@ -249,7 +251,7 @@ class ReceiptCog(commands.Cog):
 
     @receipt_group.command(name="verify", description="Mark receipt as verified")
     async def verify(self, interaction: discord.Interaction, filename: str):
-        """Mark a receipt as verified."""
+        """Mark a receipt as verified and check for budget warnings."""
         receipt = self.storage.load_receipt(filename)
 
         if not receipt:
@@ -259,7 +261,23 @@ class ReceiptCog(commands.Cog):
         receipt.verified = True
         self.storage.save_receipt(receipt)
 
-        await interaction.response.send_message(f"Receipt `{filename}` marked as verified.")
+        # Check eating out budget for overspending
+        now = datetime.now()
+        month = now.strftime("%Y-%m")
+        budget = self.budget_storage.get_monthly_budget(month)
+
+        # Create response with budget warning if needed
+        response = f"Receipt `{filename}` marked as verified."
+
+        if budget.overspent:
+            response += (
+                f"\n\n⚠️ **Budget Alert**: You've overspent your eating out budget "
+                f"by **${abs(budget.remaining):.2f}** this month ({month}).\n"
+                f"**Budget**: ${budget.budget_limit:.2f} | "
+                f"**Spent**: ${budget.spent:.2f}"
+            )
+
+        await interaction.response.send_message(response)
 
     @receipt_group.command(name="delete", description="Delete a receipt")
     async def delete(self, interaction: discord.Interaction, filename: str):

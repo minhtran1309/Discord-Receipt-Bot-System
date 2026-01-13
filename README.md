@@ -8,7 +8,9 @@ A Discord bot for processing grocery receipts, identifying items using AI, and t
 - **AI-Powered Extraction**: Automatically categorizes items and handles multi-language receipts
 - **Purchase Analytics**: View store purchases by month/year with spending breakdowns
 - **Expense Tracking**: Syncs data to Google Sheets for easy tracking
+- **Budget Management**: Track eating out expenses with $100/month budget, surplus rolls to holiday fund
 - **Spending Queries**: Ask the bot about your spending habits
+- **Smart Alerts**: Get reminded about budget overspending when verifying grocery receipts
 
 ## Quick Start
 
@@ -70,13 +72,16 @@ A Discord bot for processing grocery receipts, identifying items using AI, and t
 | `/receipt correct_category <filename> <item_index> <new_category>` | Correct an item's category |
 | `/receipt view_store <store> [period]` | View store purchases by month (YYYY-MM) or year (YYYY) with analytics |
 
-### Expense Tracking
+### Expense Tracking & Budget Management
 | Command | Description |
 |---------|-------------|
-| `/clerk sync` | Sync verified receipts to Google Sheets |
+| `/clerk sync` | Sync verified receipts to Google Sheets (prevents duplicates) |
+| `/clerk status` | Check sync status of all receipts |
 | `/clerk spent <product> [month]` | Query spending on a product (optional month filter) |
 | `/clerk monthly [month]` | Get monthly expense summary (YYYY-MM format) |
 | `/clerk report <start_date> <end_date>` | Generate expense report for date range (YYYY-MM-DD) |
+| `/clerk special_treat <amount>` | Log eating out or takeaway drink expense (tracks $100/month budget) |
+| `/clerk budget_status [month]` | Check eating out budget status (defaults to current month) |
 
 ### Utility
 | Command | Description |
@@ -92,15 +97,17 @@ receipt-bot/
 │   ├── config.py            # Configuration
 │   ├── cogs/                # Discord command modules
 │   │   ├── receipt.py       # Receipt processing commands
-│   │   └── clerk.py         # Expense tracking commands
+│   │   └── clerk.py         # Expense tracking & budget commands
 │   ├── services/            # API integrations
 │   │   ├── ocr.py           # Mistral OCR service
 │   │   ├── ai_extractor.py  # AI-powered data extraction
-│   │   └── sheets.py        # Google Sheets integration
-│   ├── models.py            # Data models
-│   └── storage.py           # File operations
+│   │   └── sheets.py        # Google Sheets integration (multi-tab support)
+│   ├── models.py            # Data models (Receipt, BudgetEntry, etc.)
+│   ├── storage.py           # Receipt file operations
+│   └── budget_storage.py    # Budget data persistence
 ├── data/
 │   ├── receipts/            # Processed receipts (JSON)
+│   ├── budgets/             # Budget entries by month (JSON)
 │   ├── items/               # Extracted items (TSV)
 │   └── corrections.json     # Item name corrections
 ├── tests/
@@ -123,6 +130,7 @@ See `.env.example` for all configuration options:
 
 ## How It Works
 
+### Receipt Processing
 1. **Upload Receipt**: Use `/receipt process` with an image attachment (JPEG, PNG, HEIC)
 2. **OCR Extraction**: Mistral OCR extracts raw text from the receipt
 3. **AI Processing**: OpenRouter (GPT-4o-mini) parses the text into structured data:
@@ -131,8 +139,16 @@ See `.env.example` for all configuration options:
    - Categorizes items (Produce, Meat, Dairy, etc.)
    - Preserves multi-language text (Chinese, Korean, etc.)
 4. **Storage**: Saves receipt as JSON and items as TSV
-5. **Analytics**: View spending patterns with `/receipt view_store` or `/clerk` commands
-6. **Sync**: Export verified receipts to Google Sheets with `/clerk sync`
+5. **Verification**: Mark receipt as verified with `/receipt verify` (includes budget alert if overspent)
+6. **Sync**: Export verified receipts to Google Sheets with `/clerk sync` (prevents duplicates)
+
+### Budget Management
+1. **Log Expense**: Use `/clerk special_treat 15.50` to log eating out or takeaway expenses
+2. **Dual Tracking**: Saves locally to `data/budgets/{month}/` and syncs to Google Sheets `eat_out_2026` tab
+3. **Budget Monitoring**: Tracks $100/month budget, shows remaining amount instantly
+4. **Surplus Tracking**: Unused budget from Jan-Oct rolls over to Nov/Dec for holiday shopping
+5. **Smart Alerts**: Get reminded about overspending when verifying grocery receipts
+6. **Analytics**: View budget status with `/clerk budget_status` for current or any specific month
 
 ## Development
 
