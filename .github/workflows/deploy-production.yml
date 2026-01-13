@@ -63,6 +63,11 @@ jobs:
 
       - name: Deploy to GCP VM
         run: |
+          # Clean up old deployment directory if exists
+          gcloud compute ssh ${{ env.GCP_INSTANCE }} \
+            --zone=${{ env.GCP_ZONE }} \
+            --command="sudo rm -rf /tmp/discord-bot-deploy"
+
           # Copy files to server
           gcloud compute scp --recurse \
             --zone=${{ env.GCP_ZONE }} \

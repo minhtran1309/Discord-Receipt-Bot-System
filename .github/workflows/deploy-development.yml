@@ -55,10 +55,17 @@ jobs:
 
       - name: Deploy to GCP VM (Dev environment)
         run: |
+          # Clean up old deployment directory if exists
+          gcloud compute ssh ${{ env.GCP_INSTANCE }} \
+            --zone=${{ env.GCP_ZONE }} \
+            --command="sudo rm -rf /tmp/discord-bot-deploy"
+
+          # Copy files to server
           gcloud compute scp --recurse \
             --zone=${{ env.GCP_ZONE }} \
             . ${{ env.GCP_INSTANCE }}:/tmp/discord-bot-deploy
 
+          # Execute deployment script on server
           gcloud compute ssh ${{ env.GCP_INSTANCE }} \
             --zone=${{ env.GCP_ZONE }} \
             --command="sudo bash /tmp/discord-bot-deploy/scripts/deploy.sh development"
