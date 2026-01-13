@@ -164,6 +164,14 @@ isort bot/ tests/
 mypy bot/
 ```
 
+## Troubleshooting
+
+### Mistral OCR Rate Limiting (429 Error)
+If you encounter "Provider returned error, code: 429", the bot will automatically fall back to OpenRouter's vision model (`qwen/qwen3-vl-30b-a3b-instruct`). This is expected during high load and does not require any action from you.
+
+### Free Promotional Items
+Receipts with free items (buy X get Y free promotions) are now supported. Free items will be marked for review with lower confidence (50%) to ensure accuracy. Use the `/receipt correct_name` command if you need to update the item name.
+
 ## License
 
 MIT License - See LICENSE file for details.

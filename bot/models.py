@@ -12,7 +12,7 @@ class ReceiptItem(BaseModel):
     raw_name: str = Field(description="Full item name from receipt, can be multi-line")
     quantity: float = Field(default=1, gt=0, description="Item quantity")
     unit: str = Field(default="ea", description="Unit of measurement (ea, kg, g, L, ml, etc.)")
-    price: float = Field(gt=0, description="Item price as shown on receipt (final price after any discount)")
+    price: float = Field(ge=0, description="Item price as shown on receipt (final price after any discount, 0 for free items)")
     discount: float = Field(default=0.0, description="Discount amount from separate discount column (0 if no discount)")
     sku: Optional[str] = Field(default=None, description="Product SKU/barcode if visible")
     category: str = Field(default="Other", description="Product category (Produce, Meat, Dairy, Bakery, Pantry, Frozen, Beverage, Household, Other)")
