@@ -192,6 +192,21 @@ EOF
 
 ### Step 2: Environment Configuration
 
+**⚠️ IMPORTANT**: Do not add inline comments after values in `.env` files! Pydantic will include the entire line as the value, causing parsing errors.
+
+**Example of INCORRECT format**:
+```bash
+DISCORD_TOKEN=your_token_here  # This comment will break it!
+```
+
+**Example of CORRECT format**:
+```bash
+# Comment on its own line
+DISCORD_TOKEN=your_token_here
+```
+
+---
+
 Create production environment file:
 
 ```bash
@@ -201,7 +216,8 @@ sudo nano /opt/discord-bot/app/.env.production
 ```bash
 # Discord
 DISCORD_TOKEN=<production_token>
-DISCORD_GUILD_ID=  # Leave empty for global commands
+# Leave DISCORD_GUILD_ID empty for global commands
+DISCORD_GUILD_ID=
 
 # APIs
 MISTRAL_API_KEY=<production_key>
@@ -224,15 +240,16 @@ sudo nano /opt/discord-bot/app/.env.development
 ```
 
 ```bash
-# Discord (use separate dev bot token)
+# Discord - use separate dev bot token
 DISCORD_TOKEN=<development_token>
-DISCORD_GUILD_ID=<your_test_server_id>  # Faster command sync
+# Set DISCORD_GUILD_ID to your test server ID for faster command sync
+DISCORD_GUILD_ID=<your_test_server_id>
 
 # APIs
 MISTRAL_API_KEY=<dev_key_or_same>
 OPENROUTER_API_KEY=<dev_key_or_same>
 
-# Google Sheets (separate dev spreadsheet)
+# Google Sheets - separate dev spreadsheet
 GOOGLE_CREDENTIALS_PATH=/opt/discord-bot/app/credentials/credentials.development.json
 GOOGLE_SPREADSHEET_ID=<development_sheet_id>
 
