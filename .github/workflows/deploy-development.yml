@@ -79,7 +79,7 @@ jobs:
 
           # Update conda environment
           source /opt/miniconda/etc/profile.d/conda.sh
-          conda activate discord-bot
+          conda activate discord_env
           conda env update -f environment.yml --prune --quiet
           pip install -r requirements.txt --quiet
 
