@@ -53,28 +53,89 @@ The deployment uses git operations on the server for fast, atomic updates:
 
 ### Separate Environment Approach (Recommended)
 
-Use two separate Discord bot applications:
+Use **three separate Discord bot applications** for complete environment isolation:
 
-1. **Production Bot**:
-   - Discord Application: "Receipt Bot (Production)"
-   - Token: Stored in `.env.production`
-   - Guild: All servers (leave DISCORD_GUILD_ID empty)
-   - Spreadsheet: Production Google Sheet
-   - Service: `discord-bot.service`
+1. **Local Development Bot**:
+   - Discord Application: "Receipt Bot (Local)"
+   - Token: Stored in local `.env`
+   - Guild: Your personal test server (set DISCORD_GUILD_ID for instant sync)
+   - Spreadsheet: Local or development Google Sheet
+   - Purpose: Local testing on your machine
 
-2. **Development Bot**:
-   - Discord Application: "Receipt Bot (Development)"
-   - Token: Stored in `.env.development`
-   - Guild: Your test server only (set DISCORD_GUILD_ID for instant sync)
+2. **GCP Development Bot**:
+   - Discord Application: "Receipt Bot (Dev)"
+   - Token: Stored in `.env.development` on GCP server
+   - Guild: Team test server (set DISCORD_GUILD_ID for instant sync)
    - Spreadsheet: Development Google Sheet
    - Service: `discord-bot-dev.service`
 
+3. **GCP Production Bot**:
+   - Discord Application: "Receipt Bot (Production)"
+   - Token: Stored in `.env.production` on GCP server
+   - Guild: All servers (leave DISCORD_GUILD_ID empty for global commands)
+   - Spreadsheet: Production Google Sheet
+   - Service: `discord-bot.service`
+
 **Benefits**:
-- Complete isolation between environments
-- Test new features safely without affecting production
-- Instant command sync in development (guild-specific)
-- Separate data storage (`data/` vs `data-dev/`)
-- Both services run simultaneously on same GCP server
+- **Complete isolation** - Local testing doesn't affect dev/production
+- **Prevents accidents** - Can't accidentally impact production users
+- **Security** - If local token leaks, production is safe
+- **Fast development** - Instant command sync in test servers (guild-specific)
+- **Independent rate limits** - Each bot has separate API quotas
+- **Separate data storage** - Local vs `data-dev/` vs `data/`
+
+**Important Notes**:
+- **DISCORD_TOKEN**: Always use different tokens for each environment
+- **DISCORD_GUILD_ID**:
+  - Local/Dev: Set to test server ID (instant command registration)
+  - Production: Leave empty (global commands, 1 hour sync time)
+- You can use the same test server for local and dev, but separate servers are cleaner
+
+## Discord Bot Setup
+
+### Creating Separate Bot Applications
+
+Before deploying, create three separate Discord bot applications:
+
+**Step 1: Create Bot Applications**
+
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+2. Create three applications:
+   - "Receipt Bot (Local)" - For local development
+   - "Receipt Bot (Dev)" - For GCP development environment
+   - "Receipt Bot (Production)" - For GCP production environment
+
+**Step 2: Configure Each Bot**
+
+For each application:
+1. Go to **Bot** section
+2. Click **Reset Token** and copy the token (save securely)
+3. Enable these **Privileged Gateway Intents**:
+   - Message Content Intent (if reading message content)
+   - Server Members Intent (if needed)
+4. Set **Bot Permissions**:
+   - Send Messages
+   - Embed Links
+   - Attach Files
+   - Read Message History
+   - Use Slash Commands
+
+**Step 3: Invite Bots to Servers**
+
+For each bot, generate an invite URL:
+1. Go to **OAuth2 > URL Generator**
+2. Select scopes: `bot`, `applications.commands`
+3. Select bot permissions (same as above)
+4. Copy the generated URL and invite to appropriate servers:
+   - **Local Bot**: Your personal test server
+   - **Dev Bot**: Team test server
+   - **Production Bot**: Production servers (or leave for later)
+
+**Step 4: Get Guild IDs (for test servers)**
+
+1. Enable Discord Developer Mode: Settings > Advanced > Developer Mode
+2. Right-click your test server > Copy Server ID
+3. Save for `DISCORD_GUILD_ID` in environment files
 
 ## GCP Server Setup
 
@@ -383,10 +444,31 @@ cat github-actions-key.json
 
 Go to: **Repository Settings > Secrets and variables > Actions**
 
-Add the following secret:
+Add the following secrets:
 
+**GCP Service Account Key:**
 - **Name**: `GCP_SA_KEY`
 - **Value**: Contents of `github-actions-key.json`
+
+**Google Credentials (Base64 Encoded):**
+
+First, encode your credentials files:
+```bash
+# For development credentials
+base64 -i credentials-dev.json | tr -d '\n' > credentials-dev-base64.txt
+
+# For production credentials
+base64 -i credentials-prod.json | tr -d '\n' > credentials-prod-base64.txt
+```
+
+Then add these secrets:
+- **Name**: `GOOGLE_CREDENTIALS_DEV`
+- **Value**: Contents of `credentials-dev-base64.txt`
+
+- **Name**: `GOOGLE_CREDENTIALS_PROD`
+- **Value**: Contents of `credentials-prod-base64.txt`
+
+**Security Note**: Base64 encoding is used to safely transfer the JSON credentials through GitHub Actions without newline/formatting issues. The credentials are decoded and installed securely on the server during deployment.
 
 ### Step 3: Workflow Files
 
@@ -395,14 +477,34 @@ The repository includes two workflow files:
 1. **`.github/workflows/deploy-production.yml`**
    - Triggers on push to `main` branch
    - Runs tests (pytest, black, isort, mypy)
+   - Decodes and installs `GOOGLE_CREDENTIALS_PROD` to server
    - Deploys to production environment
    - Restarts `discord-bot.service`
 
 2. **`.github/workflows/deploy-development.yml`**
    - Triggers on push to `develop`, `guess_feature`, `clerk_feature_dev` branches
    - Runs tests (failures allowed for dev)
+   - Decodes and installs `GOOGLE_CREDENTIALS_DEV` to server
    - Deploys to development environment
    - Restarts `discord-bot-dev.service`
+
+**How Credentials are Deployed:**
+
+Both workflows automatically handle Google credentials deployment:
+1. **GitHub Action** reads the base64-encoded secret (e.g., `GOOGLE_CREDENTIALS_PROD`)
+2. Transfers the encoded credentials to the GCP server via `gcloud compute scp`
+3. **Deployment script** on the server:
+   - Decodes the base64 string back to JSON
+   - Saves to `/opt/discord-bot/app/credentials/credentials.{environment}.json`
+   - Sets secure permissions (`chmod 600`)
+   - Removes the temporary base64 file
+4. The bot service reads the credentials from the installed location
+
+This approach ensures:
+- ✅ **Secure transfer** - Credentials never exposed in logs
+- ✅ **Automatic updates** - New credentials deployed on every push
+- ✅ **Environment isolation** - Dev and prod use separate credential files
+- ✅ **No manual steps** - Fully automated deployment
 
 ## Deployment Script
 

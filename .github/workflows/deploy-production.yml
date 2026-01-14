@@ -74,6 +74,16 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
+          # Decode and install Google credentials
+          if [ -f /tmp/credentials-prod-base64.txt ]; then
+            echo "📦 Installing production Google credentials..."
+            mkdir -p /opt/discord-bot/app/credentials
+            base64 -d /tmp/credentials-prod-base64.txt > /opt/discord-bot/app/credentials/credentials.production.json
+            chmod 600 /opt/discord-bot/app/credentials/credentials.production.json
+            rm /tmp/credentials-prod-base64.txt
+            echo "✅ Google credentials installed"
+          fi
+
           # Update conda environment
           source /opt/miniconda/etc/profile.d/conda.sh
           conda activate discord-bot
@@ -97,6 +107,13 @@ jobs:
           echo "=== Production deployment completed! ==="
           DEPLOY_SCRIPT
 
+          # Transfer encoded credentials to server
+          echo "${{ secrets.GOOGLE_CREDENTIALS_PROD }}" > /tmp/credentials-prod-base64.txt
+          gcloud compute scp /tmp/credentials-prod-base64.txt botuser@${{ env.GCP_INSTANCE }}:/tmp/ \
+            --zone=${{ env.GCP_ZONE }} --quiet
+          rm /tmp/credentials-prod-base64.txt
+
+          # Transfer and execute deployment script
           gcloud compute scp deploy.sh botuser@${{ env.GCP_INSTANCE }}:/tmp/deploy.sh \
             --zone=${{ env.GCP_ZONE }} --quiet
 
