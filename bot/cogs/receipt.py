@@ -118,8 +118,8 @@ class ReceiptCog(commands.Cog):
             await interaction.followup.send("🔍 Processing receipt with OCR...")
             ocr_text = await self.ocr_service.process_image(
                 image_bytes,
-                openrouter_key=self.config.openrouter_api_key,
-                fallback_model=self.config.fallback_ocr_model,
+                openrouter_key=self.settings.openrouter_api_key,
+                fallback_model=self.settings.fallback_ocr_model,
             )
 
             # Step 3: AI Extraction
