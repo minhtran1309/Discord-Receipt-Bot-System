@@ -292,11 +292,11 @@ Group=botuser
 WorkingDirectory=/opt/discord-bot/app
 
 # Environment
-Environment="PATH=/opt/miniconda/envs/discord-bot/bin:/usr/local/bin:/usr/bin:/bin"
-EnvironmentFile=/opt/discord-bot/app/.env
+Environment="PATH=/opt/miniconda/envs/discord_env/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/opt/discord-bot/app/.env.production
 
 # Execution
-ExecStart=/opt/miniconda/envs/discord-bot/bin/python -m bot.main
+ExecStart=/opt/miniconda/envs/discord_env/bin/python -m bot.main
 ExecReload=/bin/kill -HUP $MAINPID
 
 # Restart policy
@@ -340,10 +340,10 @@ User=botuser
 Group=botuser
 WorkingDirectory=/opt/discord-bot/app
 
-Environment="PATH=/opt/miniconda/envs/discord-bot/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=/opt/miniconda/envs/discord_env/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=/opt/discord-bot/app/.env.development
 
-ExecStart=/opt/miniconda/envs/discord-bot/bin/python -m bot.main
+ExecStart=/opt/miniconda/envs/discord_env/bin/python -m bot.main
 
 Restart=always
 RestartSec=10s
