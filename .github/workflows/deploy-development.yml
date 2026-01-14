@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 env:
-  GCP_PROJECT_ID: GCP-discord-receipts-bot
+  GCP_PROJECT_ID: gcp-discord-receipt-bot
   GCP_ZONE: australia-southeast1-a
   GCP_INSTANCE: discord-bot-server
   DEPLOY_PATH: /opt/discord-bot
@@ -55,13 +55,20 @@ jobs:
 
       - name: Deploy to GCP VM (Dev environment)
         run: |
-          gcloud compute scp --recurse \
-            --zone=${{ env.GCP_ZONE }} \
-            . ${{ env.GCP_INSTANCE }}:/tmp/discord-bot-deploy
-
+          # Clean up and recreate deployment directory
           gcloud compute ssh ${{ env.GCP_INSTANCE }} \
             --zone=${{ env.GCP_ZONE }} \
-            --command="sudo bash /tmp/discord-bot-deploy/scripts/deploy.sh development"
+            --command="rm -rf ~/discord-bot-deploy && mkdir -p ~/discord-bot-deploy"
+
+          # Copy files to server (to home directory)
+          gcloud compute scp --recurse \
+            --zone=${{ env.GCP_ZONE }} \
+            . ${{ env.GCP_INSTANCE }}:~/discord-bot-deploy
+
+          # Execute deployment script on server
+          gcloud compute ssh ${{ env.GCP_INSTANCE }} \
+            --zone=${{ env.GCP_ZONE }} \
+            --command="sudo bash ~/discord-bot-deploy/scripts/deploy.sh development"
 
       - name: Verify deployment
         run: |

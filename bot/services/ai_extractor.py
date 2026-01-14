@@ -70,10 +70,14 @@ Extract the following information in JSON format:
   - raw_name: Full item name (combine multi-line names)
   - quantity: Quantity purchased (default 1.0)
   - unit: Unit type (ea, kg, g, L, ml, etc., default "ea")
-  - price: Item price as shown (final price after discount)
+  - price: Item price as shown (final price after discount, 0.0 for free promotional items)
   - discount: Discount amount from separate column (0 if none)
   - sku: Product SKU/barcode if visible
   - category: Product category (e.g., "Produce", "Meat", "Dairy", "Bakery", "Pantry", "Frozen", "Beverage", "Household", "Other")
+
+Important:
+- For free promotional items (buy X get Y free), set price to 0.0
+- Preserve the item in the output even if price is 0.0
 - subtotal: Subtotal before tax (if shown)
 - tax: Tax amount (GST, VAT, sales tax)
 - discount_total: Total discount amount (if shown)
@@ -114,6 +118,13 @@ Return ONLY valid JSON, no markdown formatting."""
             )
             for item in extracted_data.get("items", [])
         ]
+
+        # Adjust confidence and mark for review for free items
+        for item in items:
+            if item.price == 0.0:
+                item.confidence = 0.5  # Lower confidence for free items
+                item.needs_review = True  # Flag for user verification
+                item.guessed_name = item.raw_name  # Use raw name as guess
 
         # Parse datetime
         try:
