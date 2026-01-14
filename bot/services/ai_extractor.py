@@ -1,10 +1,12 @@
 """AI-powered receipt data extraction using OpenRouter."""
 
-import httpx
 import json
-from typing import Dict, Any
-from bot.models import Receipt, ReceiptItem
 from datetime import datetime
+from typing import Any, Dict
+
+import httpx
+
+from bot.models import Receipt, ReceiptItem
 
 
 class AIExtractor:
@@ -43,12 +45,14 @@ class AIExtractor:
                 json={
                     "model": self.model,
                     "messages": [{"role": "user", "content": prompt}],
-                    "response_format": {"type": "json_object"}
-                }
+                    "response_format": {"type": "json_object"},
+                },
             )
 
             if response.status_code != 200:
-                raise Exception(f"AI extraction failed: {response.status_code} - {response.text}")
+                raise Exception(
+                    f"AI extraction failed: {response.status_code} - {response.text}"
+                )
 
             result = response.json()
             extracted_json = result["choices"][0]["message"]["content"]
@@ -94,7 +98,9 @@ Important:
 
 Return ONLY valid JSON, no markdown formatting."""
 
-    def convert_to_receipt(self, extracted_data: Dict[str, Any], raw_ocr_text: str) -> Receipt:
+    def convert_to_receipt(
+        self, extracted_data: Dict[str, Any], raw_ocr_text: str
+    ) -> Receipt:
         """
         Convert extracted data to Receipt model.
 
@@ -114,7 +120,7 @@ Return ONLY valid JSON, no markdown formatting."""
                 price=item.get("price", 0.0),
                 discount=item.get("discount", 0.0),
                 sku=item.get("sku"),
-                category=item.get("category", "Other")
+                category=item.get("category", "Other"),
             )
             for item in extracted_data.get("items", [])
         ]

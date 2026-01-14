@@ -1,7 +1,8 @@
 """Configuration management for the Discord Receipt Bot."""
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):

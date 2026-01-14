@@ -1,13 +1,15 @@
 """Clerk cog - handles /clerk commands for expense tracking."""
 
+from datetime import datetime
+
 import discord
 from discord import app_commands
 from discord.ext import commands
-from bot.services.sheets import SheetsService
-from bot.storage import Storage
+
 from bot.budget_storage import BudgetStorage
 from bot.models import BudgetEntry
-from datetime import datetime
+from bot.services.sheets import SheetsService
+from bot.storage import Storage
 
 
 class ClerkCog(commands.Cog):
@@ -84,20 +86,14 @@ class ClerkCog(commands.Cog):
                 title="✅ Sync Complete",
                 color=0x00FF00,
             )
+            embed.add_field(name="Newly Synced", value=f"{count} receipts", inline=True)
             embed.add_field(
-                name="Newly Synced",
-                value=f"{count} receipts",
-                inline=True
-            )
-            embed.add_field(
-                name="Already Synced",
-                value=f"{already_synced} receipts",
-                inline=True
+                name="Already Synced", value=f"{already_synced} receipts", inline=True
             )
             embed.add_field(
                 name="Total Verified",
                 value=f"{count + already_synced} receipts",
-                inline=True
+                inline=True,
             )
 
             if count > 0:
@@ -109,6 +105,7 @@ class ClerkCog(commands.Cog):
 
         except Exception as e:
             import traceback
+
             error_details = traceback.format_exc()
             print(f"[Clerk Sync] Error during sync:\n{error_details}")
             await interaction.followup.send(
@@ -160,12 +157,8 @@ class ClerkCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @clerk_group.command(
-        name="monthly", description="Get monthly expense summary"
-    )
-    async def monthly(
-        self, interaction: discord.Interaction, month: str = None
-    ):
+    @clerk_group.command(name="monthly", description="Get monthly expense summary")
+    async def monthly(self, interaction: discord.Interaction, month: str = None):
         """Get expense summary for a month (YYYY-MM format)."""
         if not month:
             month = datetime.now().strftime("%Y-%m")
@@ -239,10 +232,7 @@ class ClerkCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @clerk_group.command(
-        name="status",
-        description="Check sync status of receipts"
-    )
+    @clerk_group.command(name="status", description="Check sync status of receipts")
     async def status(self, interaction: discord.Interaction):
         """Show sync status of all receipts."""
         await interaction.response.defer()
@@ -269,27 +259,23 @@ class ClerkCog(commands.Cog):
 
         embed = discord.Embed(
             title="📊 Receipt Sync Status",
-            color=0x3498db,
+            color=0x3498DB,
         )
         embed.add_field(
             name="✅ Synced to Sheets",
             value=f"{verified_synced} receipts",
-            inline=False
+            inline=False,
         )
         embed.add_field(
             name="⏳ Verified (Not Synced)",
             value=f"{verified_unsynced} receipts",
-            inline=False
+            inline=False,
         )
         embed.add_field(
-            name="⏸️ Unverified",
-            value=f"{unverified} receipts",
-            inline=False
+            name="⏸️ Unverified", value=f"{unverified} receipts", inline=False
         )
         embed.add_field(
-            name="📁 Total Receipts",
-            value=f"{total} receipts",
-            inline=False
+            name="📁 Total Receipts", value=f"{total} receipts", inline=False
         )
 
         if verified_unsynced > 0:
@@ -300,14 +286,9 @@ class ClerkCog(commands.Cog):
         await interaction.followup.send(embed=embed)
 
     @clerk_group.command(
-        name="special_treat",
-        description="Log eating out or takeaway drink expense"
+        name="special_treat", description="Log eating out or takeaway drink expense"
     )
-    async def special_treat(
-        self,
-        interaction: discord.Interaction,
-        amount: float
-    ):
+    async def special_treat(self, interaction: discord.Interaction, amount: float):
         """Log an eating out expense and update budget tracking.
 
         Args:
@@ -326,11 +307,7 @@ class ClerkCog(commands.Cog):
             month = now.strftime("%Y-%m")
 
             # Create budget entry
-            entry = BudgetEntry(
-                date=now,
-                amount=amount,
-                month=month
-            )
+            entry = BudgetEntry(date=now, amount=amount, month=month)
 
             # Save to local storage
             filename = self.budget_storage.save_entry(entry)
@@ -340,10 +317,10 @@ class ClerkCog(commands.Cog):
             try:
                 row = [
                     now.strftime("%Y-%m-%d"),  # Date
-                    now.strftime("%H:%M"),     # Time
-                    amount,                     # Amount
-                    "Eating out / Takeaway",    # Category
-                    month,                      # Month
+                    now.strftime("%H:%M"),  # Time
+                    amount,  # Amount
+                    "Eating out / Takeaway",  # Category
+                    month,  # Month
                 ]
                 self.sheets.append_row("eat_out_2026", row)
                 print(f"[Budget] Updated Google Sheets: eat_out_2026")
@@ -361,18 +338,12 @@ class ClerkCog(commands.Cog):
             embed = discord.Embed(
                 title="🍔 Special Treat Logged",
                 color=0x00FF00 if not budget.overspent else 0xFF0000,
-                timestamp=now
+                timestamp=now,
             )
 
+            embed.add_field(name="Amount Spent", value=f"${amount:.2f}", inline=True)
             embed.add_field(
-                name="Amount Spent",
-                value=f"${amount:.2f}",
-                inline=True
-            )
-            embed.add_field(
-                name="Date",
-                value=now.strftime("%Y-%m-%d %H:%M"),
-                inline=True
+                name="Date", value=now.strftime("%Y-%m-%d %H:%M"), inline=True
             )
 
             embed.add_field(
@@ -382,7 +353,7 @@ class ClerkCog(commands.Cog):
                     f"**Spent**: ${budget.spent:.2f}\n"
                     f"**Remaining**: ${budget.remaining:.2f}"
                 ),
-                inline=False
+                inline=False,
             )
 
             # Add overspending warning or surplus message
@@ -393,7 +364,7 @@ class ClerkCog(commands.Cog):
                         f"You've overspent by **${abs(budget.remaining):.2f}** this month!\n"
                         f"I'll remind you about this when you sync grocery receipts."
                     ),
-                    inline=False
+                    inline=False,
                 )
                 embed.color = 0xFF0000  # Red
             elif budget.remaining > 0:
@@ -403,7 +374,7 @@ class ClerkCog(commands.Cog):
                         f"Great! You have **${budget.remaining:.2f}** left for {month}.\n"
                         f"Unused budget will be added to Nov/Dec for holiday shopping!"
                     ),
-                    inline=False
+                    inline=False,
                 )
 
             # Show year-to-date surplus
@@ -412,28 +383,22 @@ class ClerkCog(commands.Cog):
                 embed.add_field(
                     name="🎄 Holiday Shopping Fund",
                     value=f"**${year_surplus:.2f}** saved for Nov/Dec",
-                    inline=False
+                    inline=False,
                 )
 
             await interaction.followup.send(embed=embed)
 
         except Exception as e:
             import traceback
+
             error_details = traceback.format_exc()
             print(f"[Budget] Error: {error_details}")
-            await interaction.followup.send(
-                f"❌ Error logging special treat: {e}"
-            )
+            await interaction.followup.send(f"❌ Error logging special treat: {e}")
 
     @clerk_group.command(
-        name="budget_status",
-        description="Check eating out budget status"
+        name="budget_status", description="Check eating out budget status"
     )
-    async def budget_status(
-        self,
-        interaction: discord.Interaction,
-        month: str = None
-    ):
+    async def budget_status(self, interaction: discord.Interaction, month: str = None):
         """Check eating out budget status for a specific month.
 
         Args:
@@ -471,7 +436,7 @@ class ClerkCog(commands.Cog):
                     f"**Spent**: ${budget.spent:.2f}\n"
                     f"**Remaining**: ${budget.remaining:.2f}"
                 ),
-                inline=False
+                inline=False,
             )
 
             # Show entries
@@ -487,13 +452,13 @@ class ClerkCog(commands.Cog):
                 embed.add_field(
                     name=f"📝 Recent Entries ({len(budget.entries)} total)",
                     value=entries_text,
-                    inline=False
+                    inline=False,
                 )
             else:
                 embed.add_field(
                     name="📝 Entries",
                     value="No eating out expenses logged this month",
-                    inline=False
+                    inline=False,
                 )
 
             # Show year surplus
@@ -503,16 +468,20 @@ class ClerkCog(commands.Cog):
                 embed.add_field(
                     name="🎄 Holiday Shopping Fund",
                     value=f"**${year_surplus:.2f}** saved for Nov/Dec",
-                    inline=False
+                    inline=False,
                 )
 
             # Add status message
             if budget.overspent:
-                embed.description = f"⚠️ Budget exceeded by **${abs(budget.remaining):.2f}**"
+                embed.description = (
+                    f"⚠️ Budget exceeded by **${abs(budget.remaining):.2f}**"
+                )
             elif budget.spent == 0:
                 embed.description = "✨ No spending this month - full budget available!"
             else:
-                embed.description = f"✅ **${budget.remaining:.2f}** remaining for this month"
+                embed.description = (
+                    f"✅ **${budget.remaining:.2f}** remaining for this month"
+                )
 
             await interaction.followup.send(embed=embed)
 

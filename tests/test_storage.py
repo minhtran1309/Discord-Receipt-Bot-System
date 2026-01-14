@@ -1,9 +1,11 @@
 """Tests for storage module."""
 
-import pytest
 from datetime import datetime
-from bot.storage import Storage
+
+import pytest
+
 from bot.models import Receipt, ReceiptItem
+from bot.storage import Storage
 
 
 def test_save_and_load_receipt(tmp_path):

@@ -1,8 +1,10 @@
 """Google Sheets API integration."""
 
+from datetime import datetime
+
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime
+
 from bot.models import Receipt
 
 
@@ -122,7 +124,9 @@ class SheetsService:
         if not self.worksheet:
             self.connect()
 
-        print(f"[Sheets] Syncing receipt: {receipt.filename} ({len(receipt.items)} items)")
+        print(
+            f"[Sheets] Syncing receipt: {receipt.filename} ({len(receipt.items)} items)"
+        )
 
         # Prepare rows for each item
         rows = []

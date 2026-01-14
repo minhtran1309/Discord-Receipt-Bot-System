@@ -1,8 +1,9 @@
 """Budget data storage using JSON files."""
 
 import json
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
 from bot.models import BudgetEntry, MonthlyBudget
 
 
@@ -58,15 +59,17 @@ class BudgetStorage:
                 with open(filepath, "r") as f:
                     data = json.load(f)
                     # Convert string dates back to datetime
-                    data['date'] = datetime.fromisoformat(data['date'])
-                    data['created_at'] = datetime.fromisoformat(data['created_at'])
+                    data["date"] = datetime.fromisoformat(data["date"])
+                    data["created_at"] = datetime.fromisoformat(data["created_at"])
                     entries.append(BudgetEntry(**data))
             except Exception as e:
                 print(f"Error loading {filepath}: {e}")
 
         return sorted(entries, key=lambda x: x.date)
 
-    def get_monthly_budget(self, month: str, budget_limit: float = 100.0) -> MonthlyBudget:
+    def get_monthly_budget(
+        self, month: str, budget_limit: float = 100.0
+    ) -> MonthlyBudget:
         """Get monthly budget summary.
 
         Args:
@@ -89,7 +92,7 @@ class BudgetStorage:
             remaining=remaining,
             entries=entries,
             overspent=overspent,
-            surplus=surplus
+            surplus=surplus,
         )
 
     def get_year_surplus(self, year: int = 2026) -> float:
