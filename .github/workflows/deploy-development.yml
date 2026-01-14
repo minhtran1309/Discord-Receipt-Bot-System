@@ -2,7 +2,7 @@ name: Deploy to Development (GCP)
 
 on:
   push:
-    branches: [ develop, guess_feature, clerk_feature_dev ]
+    branches: [  guess_feature, clerk_feature_dev ]
   pull_request:
     branches: [ main ]
 
