@@ -10,7 +10,7 @@ This guide covers the complete setup for deploying the Discord Receipt Bot to Go
 - **Compute Instance**: `discord-bot-server`
 - **Zone**: `australia-southeast1-a`
 - **Bot User**: `botuser`
-- **Application Directory**: `/opt/discord-bot`
+- **Application Directory**: `/opt/discord-bot/app`
 - **Log Directory**: `/var/log/discord-bot`
 - **Miniconda**: `/opt/miniconda`
 
@@ -34,6 +34,22 @@ This guide covers the complete setup for deploying the Discord Receipt Bot to Go
 - **Corrections**: `data/corrections.json`
 
 ## Deployment Strategy
+
+### Git-Based Deployment (Recommended)
+
+The deployment uses git operations on the server for fast, atomic updates:
+
+**How it works:**
+1. Repository is cloned once on the server at `/opt/discord-bot/app/`
+2. Deployments use `git fetch` + `git reset --hard origin/<branch>`
+3. Only transfers changed files (git deltas)
+4. GitHub Actions sends a small deployment script via SCP
+
+**Benefits:**
+- **50-250x faster** than copying entire codebase
+- **Atomic updates** - consistent state guaranteed
+- **Easy rollbacks** - use git commit hashes
+- **Bandwidth efficient** - typical deployment < 5MB
 
 ### Separate Environment Approach (Recommended)
 
@@ -62,7 +78,9 @@ Use two separate Discord bot applications:
 
 ## GCP Server Setup
 
-### Step 1: Conda Environment Setup
+### Step 0: Initial Repository Setup (One-Time)
+
+**IMPORTANT**: Before running any deployment, the repository must be cloned on the server.
 
 SSH into your GCP server:
 
@@ -70,11 +88,30 @@ SSH into your GCP server:
 gcloud compute ssh discord-bot-server --zone=australia-southeast1-a
 ```
 
+Clone the repository:
+
+```bash
+# Switch to botuser
+sudo su - botuser
+
+# Navigate to application directory (create if needed)
+sudo mkdir -p /opt/discord-bot/app
+sudo chown -R botuser:botuser /opt/discord-bot
+cd /opt/discord-bot/app
+
+# Clone repository
+git clone https://github.com/YOUR_USERNAME/Discord-Receipt-Bot-System.git .
+
+# Verify clone
+ls -la
+git status
+```
+
 Create the conda environment setup script:
 
 ```bash
 sudo -u botuser bash << 'EOF'
-cd /opt/discord-bot
+cd /opt/discord-bot/app
 /opt/miniconda/bin/conda init bash
 source ~/.bashrc
 /opt/miniconda/bin/conda env create -f environment.yml
@@ -97,7 +134,7 @@ EOF
 Create production environment file:
 
 ```bash
-sudo nano /opt/discord-bot/.env.production
+sudo nano /opt/discord-bot/app/.env.production
 ```
 
 ```bash
@@ -110,7 +147,7 @@ MISTRAL_API_KEY=<production_key>
 OPENROUTER_API_KEY=<production_key>
 
 # Google Sheets
-GOOGLE_CREDENTIALS_PATH=/opt/discord-bot/credentials/credentials.production.json
+GOOGLE_CREDENTIALS_PATH=/opt/discord-bot/app/credentials/credentials.production.json
 GOOGLE_SPREADSHEET_ID=<production_sheet_id>
 
 # App Settings
@@ -122,7 +159,7 @@ LOG_LEVEL=INFO
 Create development environment file:
 
 ```bash
-sudo nano /opt/discord-bot/.env.development
+sudo nano /opt/discord-bot/app/.env.development
 ```
 
 ```bash
@@ -135,7 +172,7 @@ MISTRAL_API_KEY=<dev_key_or_same>
 OPENROUTER_API_KEY=<dev_key_or_same>
 
 # Google Sheets (separate dev spreadsheet)
-GOOGLE_CREDENTIALS_PATH=/opt/discord-bot/credentials/credentials.development.json
+GOOGLE_CREDENTIALS_PATH=/opt/discord-bot/app/credentials/credentials.development.json
 GOOGLE_SPREADSHEET_ID=<development_sheet_id>
 
 # App Settings
@@ -147,17 +184,17 @@ LOG_LEVEL=DEBUG
 Set proper permissions:
 
 ```bash
-sudo chmod 600 /opt/discord-bot/.env.production
-sudo chmod 600 /opt/discord-bot/.env.development
-sudo chown botuser:botuser /opt/discord-bot/.env.*
+sudo chmod 600 /opt/discord-bot/app/.env.production
+sudo chmod 600 /opt/discord-bot/app/.env.development
+sudo chown botuser:botuser /opt/discord-bot/app/.env.*
 ```
 
 Create credentials directory:
 
 ```bash
-sudo mkdir -p /opt/discord-bot/credentials
-sudo chmod 700 /opt/discord-bot/credentials
-sudo chown botuser:botuser /opt/discord-bot/credentials
+sudo mkdir -p /opt/discord-bot/app/credentials
+sudo chmod 700 /opt/discord-bot/app/credentials
+sudo chown botuser:botuser /opt/discord-bot/app/credentials
 ```
 
 Upload credentials files (from local machine):
@@ -167,10 +204,10 @@ gcloud compute scp credentials.production.json discord-bot-server:/tmp/ --zone=a
 gcloud compute scp credentials.development.json discord-bot-server:/tmp/ --zone=australia-southeast1-a
 
 # Then on server:
-sudo mv /tmp/credentials.production.json /opt/discord-bot/credentials/
-sudo mv /tmp/credentials.development.json /opt/discord-bot/credentials/
-sudo chmod 600 /opt/discord-bot/credentials/*.json
-sudo chown botuser:botuser /opt/discord-bot/credentials/*.json
+sudo mv /tmp/credentials.production.json /opt/discord-bot/app/credentials/
+sudo mv /tmp/credentials.development.json /opt/discord-bot/app/credentials/
+sudo chmod 600 /opt/discord-bot/app/credentials/*.json
+sudo chown botuser:botuser /opt/discord-bot/app/credentials/*.json
 ```
 
 ### Step 3: Systemd Service Configuration
@@ -191,11 +228,11 @@ Wants=network-online.target
 Type=simple
 User=botuser
 Group=botuser
-WorkingDirectory=/opt/discord-bot
+WorkingDirectory=/opt/discord-bot/app
 
 # Environment
 Environment="PATH=/opt/miniconda/envs/discord-bot/bin:/usr/local/bin:/usr/bin:/bin"
-EnvironmentFile=/opt/discord-bot/.env
+EnvironmentFile=/opt/discord-bot/app/.env
 
 # Execution
 ExecStart=/opt/miniconda/envs/discord-bot/bin/python -m bot.main
@@ -240,10 +277,10 @@ After=network.target
 Type=simple
 User=botuser
 Group=botuser
-WorkingDirectory=/opt/discord-bot
+WorkingDirectory=/opt/discord-bot/app
 
 Environment="PATH=/opt/miniconda/envs/discord-bot/bin:/usr/local/bin:/usr/bin:/bin"
-EnvironmentFile=/opt/discord-bot/.env.development
+EnvironmentFile=/opt/discord-bot/app/.env.development
 
 ExecStart=/opt/miniconda/envs/discord-bot/bin/python -m bot.main
 
@@ -281,10 +318,38 @@ Set environment symlink (for manual deployment):
 
 ```bash
 # Production (default)
-sudo ln -sf /opt/discord-bot/.env.production /opt/discord-bot/.env
+sudo ln -sf /opt/discord-bot/app/.env.production /opt/discord-bot/app/.env
 
 # OR Development
-sudo ln -sf /opt/discord-bot/.env.development /opt/discord-bot/.env
+sudo ln -sf /opt/discord-bot/app/.env.development /opt/discord-bot/app/.env
+```
+
+### Step 4: Configure Sudo Permissions for Deployment
+
+Grant botuser permissions to restart services (required for CI/CD):
+
+```bash
+sudo nano /etc/sudoers.d/botuser-discord-bot
+```
+
+Add:
+
+```
+botuser ALL=(ALL) NOPASSWD: /bin/systemctl restart discord-bot.service
+botuser ALL=(ALL) NOPASSWD: /bin/systemctl restart discord-bot-dev.service
+botuser ALL=(ALL) NOPASSWD: /bin/systemctl status discord-bot.service
+botuser ALL=(ALL) NOPASSWD: /bin/systemctl status discord-bot-dev.service
+botuser ALL=(ALL) NOPASSWD: /bin/systemctl is-active discord-bot.service
+botuser ALL=(ALL) NOPASSWD: /bin/systemctl is-active discord-bot-dev.service
+botuser ALL=(ALL) NOPASSWD: /usr/bin/journalctl -u discord-bot.service *
+botuser ALL=(ALL) NOPASSWD: /usr/bin/journalctl -u discord-bot-dev.service *
+```
+
+Set proper permissions:
+
+```bash
+sudo chmod 440 /etc/sudoers.d/botuser-discord-bot
+sudo visudo -c  # Verify syntax
 ```
 
 ## GitHub Actions CI/CD Setup
@@ -588,7 +653,7 @@ sudo journalctl -u discord-bot.service --since "5 minutes ago"
 ```bash
 # Check if bot can reach external APIs
 sudo -u botuser bash
-cd /opt/discord-bot
+cd /opt/discord-bot/app
 source /opt/miniconda/etc/profile.d/conda.sh
 conda activate discord-bot
 python -c "import httpx; print(httpx.get('https://api.mistral.ai').status_code)"

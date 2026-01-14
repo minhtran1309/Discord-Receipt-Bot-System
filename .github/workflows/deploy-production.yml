@@ -9,7 +9,7 @@ env:
   GCP_PROJECT_ID: gcp-discord-receipt-bot
   GCP_ZONE: australia-southeast1-a
   GCP_INSTANCE: discord-bot-server
-  DEPLOY_PATH: /opt/discord-bot
+  DEPLOY_PATH: /opt/discord-bot/app
 
 jobs:
   test:
@@ -63,26 +63,54 @@ jobs:
 
       - name: Deploy to GCP VM
         run: |
-          # Clean up and recreate deployment directory
-          gcloud compute ssh ${{ env.GCP_INSTANCE }} \
-            --zone=${{ env.GCP_ZONE }} \
-            --command="rm -rf ~/discord-bot-deploy && mkdir -p ~/discord-bot-deploy"
+          cat > deploy.sh << 'DEPLOY_SCRIPT'
+          #!/bin/bash
+          set -e
 
-          # Copy files to server (to home directory)
-          gcloud compute scp --recurse \
-            --zone=${{ env.GCP_ZONE }} \
-            . ${{ env.GCP_INSTANCE }}:~/discord-bot-deploy
+          echo "=== Starting deployment to production ==="
+          cd /opt/discord-bot/app
 
-          # Execute deployment script on server
-          gcloud compute ssh ${{ env.GCP_INSTANCE }} \
+          # Fetch latest code
+          git fetch origin main
+          git reset --hard origin/main
+
+          # Update conda environment
+          source /opt/miniconda/etc/profile.d/conda.sh
+          conda activate discord-bot
+          conda env update -f environment.yml --prune --quiet
+          pip install -r requirements.txt --quiet
+
+          # Restart service
+          sudo systemctl restart discord-bot.service
+
+          # Wait and verify
+          sleep 5
+
+          if sudo systemctl is-active --quiet discord-bot.service; then
+              echo "✅ Production service is running!"
+          else
+              echo "❌ Production service failed to start!"
+              sudo journalctl -u discord-bot.service -n 30 --no-pager
+              exit 1
+          fi
+
+          echo "=== Production deployment completed! ==="
+          DEPLOY_SCRIPT
+
+          gcloud compute scp deploy.sh botuser@${{ env.GCP_INSTANCE }}:/tmp/deploy.sh \
+            --zone=${{ env.GCP_ZONE }} --quiet
+
+          gcloud compute ssh botuser@${{ env.GCP_INSTANCE }} \
             --zone=${{ env.GCP_ZONE }} \
-            --command="sudo bash ~/discord-bot-deploy/scripts/deploy.sh production"
+            --command="chmod +x /tmp/deploy.sh && /tmp/deploy.sh" \
+            --quiet
 
       - name: Verify deployment
         run: |
-          gcloud compute ssh ${{ env.GCP_INSTANCE }} \
+          gcloud compute ssh botuser@${{ env.GCP_INSTANCE }} \
             --zone=${{ env.GCP_ZONE }} \
-            --command="sudo systemctl status discord-bot.service"
+            --command="sudo systemctl status discord-bot.service --no-pager" \
+            --quiet
 
       - name: Send notification
         if: always()

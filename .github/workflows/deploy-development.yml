@@ -10,7 +10,7 @@ env:
   GCP_PROJECT_ID: gcp-discord-receipt-bot
   GCP_ZONE: australia-southeast1-a
   GCP_INSTANCE: discord-bot-server
-  DEPLOY_PATH: /opt/discord-bot
+  DEPLOY_PATH: /opt/discord-bot/app
 
 jobs:
   test:
@@ -55,23 +55,52 @@ jobs:
 
       - name: Deploy to GCP VM (Dev environment)
         run: |
-          # Clean up and recreate deployment directory
-          gcloud compute ssh ${{ env.GCP_INSTANCE }} \
-            --zone=${{ env.GCP_ZONE }} \
-            --command="rm -rf ~/discord-bot-deploy && mkdir -p ~/discord-bot-deploy"
+          cat > deploy-dev.sh << 'DEPLOY_SCRIPT'
+          #!/bin/bash
+          set -e
 
-          # Copy files to server (to home directory)
-          gcloud compute scp --recurse \
-            --zone=${{ env.GCP_ZONE }} \
-            . ${{ env.GCP_INSTANCE }}:~/discord-bot-deploy
+          echo "=== Starting deployment to development ==="
+          cd /opt/discord-bot/app
 
-          # Execute deployment script on server
-          gcloud compute ssh ${{ env.GCP_INSTANCE }} \
+          # Fetch latest code from current branch
+          BRANCH_NAME="${GITHUB_REF##*/}"
+          git fetch origin "$BRANCH_NAME"
+          git reset --hard "origin/$BRANCH_NAME"
+
+          # Update conda environment
+          source /opt/miniconda/etc/profile.d/conda.sh
+          conda activate discord-bot
+          conda env update -f environment.yml --prune --quiet
+          pip install -r requirements.txt --quiet
+
+          # Restart dev service
+          sudo systemctl restart discord-bot-dev.service
+
+          # Wait and verify
+          sleep 5
+
+          if sudo systemctl is-active --quiet discord-bot-dev.service; then
+              echo "✅ Development service is running!"
+          else
+              echo "❌ Development service failed to start!"
+              sudo journalctl -u discord-bot-dev.service -n 30 --no-pager
+              exit 1
+          fi
+
+          echo "=== Development deployment completed! ==="
+          DEPLOY_SCRIPT
+
+          gcloud compute scp deploy-dev.sh botuser@${{ env.GCP_INSTANCE }}:/tmp/deploy-dev.sh \
+            --zone=${{ env.GCP_ZONE }} --quiet
+
+          gcloud compute ssh botuser@${{ env.GCP_INSTANCE }} \
             --zone=${{ env.GCP_ZONE }} \
-            --command="sudo bash ~/discord-bot-deploy/scripts/deploy.sh development"
+            --command="GITHUB_REF=${{ github.ref }} bash -c 'chmod +x /tmp/deploy-dev.sh && /tmp/deploy-dev.sh'" \
+            --quiet
 
       - name: Verify deployment
         run: |
-          gcloud compute ssh ${{ env.GCP_INSTANCE }} \
+          gcloud compute ssh botuser@${{ env.GCP_INSTANCE }} \
             --zone=${{ env.GCP_ZONE }} \
-            --command="sudo systemctl status discord-bot-dev.service"
+            --command="sudo systemctl status discord-bot-dev.service --no-pager" \
+            --quiet
