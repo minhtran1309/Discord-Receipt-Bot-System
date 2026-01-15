@@ -42,7 +42,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/discord-bot/data /var/log/discord-bot
+ReadWritePaths=/opt/discord-bot/app/data /var/log/discord-bot
 
 # Resource limits
 LimitNOFILE=4096
@@ -76,6 +76,11 @@ RestartSec=10s
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=discord-bot-dev
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/opt/discord-bot/app/data
 
 [Install]
 WantedBy=multi-user.target

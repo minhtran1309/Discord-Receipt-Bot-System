@@ -229,7 +229,7 @@ GOOGLE_SPREADSHEET_ID=<production_sheet_id>
 
 # App Settings
 CONFIDENCE_THRESHOLD=0.7
-DATA_DIR=/opt/discord-bot/data
+DATA_DIR=data
 LOG_LEVEL=INFO
 ```
 
@@ -255,7 +255,7 @@ GOOGLE_SPREADSHEET_ID=<development_sheet_id>
 
 # App Settings
 CONFIDENCE_THRESHOLD=0.7
-DATA_DIR=/opt/discord-bot/data-dev
+DATA_DIR=data
 LOG_LEVEL=DEBUG
 ```
 

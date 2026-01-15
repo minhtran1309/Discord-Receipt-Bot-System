@@ -40,6 +40,8 @@ jobs:
     name: Deploy to Development Environment
     needs: test
     runs-on: ubuntu-latest
+    # Only deploy on push events, not pull requests
+    if: github.event_name == 'push'
 
     steps:
       - name: Checkout code
