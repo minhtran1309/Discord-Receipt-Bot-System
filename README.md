@@ -57,6 +57,56 @@ A Discord bot for processing grocery receipts, identifying items using AI, and t
    python -m bot.main
    ```
 
+### Extended Installation: GCP Deployment with CI/CD
+
+For production deployment on Google Cloud Platform with automated CI/CD pipelines:
+
+1. **Set up GCP Compute Engine**:
+   - Create a GCP project and Compute Engine VM instance
+   - Install conda/miniconda on the server
+   - Clone the repository to `/opt/discord-bot/app/`
+   - Create `botuser` account for running the bot
+
+2. **Create separate Discord bot applications**:
+   - Create three Discord bot applications (Local, Dev, Production)
+   - Get separate tokens for each environment
+   - See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for detailed steps
+
+3. **Set up systemd services**:
+   ```bash
+   # On the GCP server, run:
+   bash scripts/setup_systemd_services.sh
+   ```
+   This creates two systemd services:
+   - `discord-bot.service` - Production bot
+   - `discord-bot-dev.service` - Development bot
+
+4. **Configure environment files on server**:
+   - Create `.env.development` for dev bot (points to dev spreadsheet)
+   - Create `.env.production` for prod bot (points to prod spreadsheet)
+   - **Important**: Do not use inline comments in .env files (Pydantic parsing issue)
+
+5. **Set up GitHub Actions secrets**:
+   - `GCP_SA_KEY` - Service account key for GitHub Actions to access GCP
+   - `GOOGLE_CREDENTIALS_DEV` - Base64-encoded Google Sheets credentials for dev
+   - `GOOGLE_CREDENTIALS_PROD` - Base64-encoded Google Sheets credentials for prod
+
+6. **Automated deployments**:
+   - Push to `guess_feature` or `clerk_feature_dev` → Auto-deploys to dev server
+   - Merge to `main` → Auto-deploys to production server
+   - See [docs/GITHUB_ACTIONS_EXPLAINED.md](docs/GITHUB_ACTIONS_EXPLAINED.md) for workflow details
+
+7. **Local development with bot switching**:
+   ```bash
+   # Start local bot (stops GCP dev bot automatically)
+   bash scripts/start_local_bot.sh
+
+   # Stop local bot (restarts GCP dev bot)
+   bash scripts/stop_local_bot.sh
+   ```
+
+**Complete setup guide**: See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for comprehensive deployment instructions.
+
 ## Commands
 
 ### Receipt Processing
