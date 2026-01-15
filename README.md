@@ -222,6 +222,33 @@ If you encounter "Provider returned error, code: 429", the bot will automaticall
 ### Free Promotional Items
 Receipts with free items (buy X get Y free promotions) are now supported. Free items will be marked for review with lower confidence (50%) to ensure accuracy. Use the `/receipt correct_name` command if you need to update the item name.
 
+### GCP Deployment: Pull Request Errors
+If you see "fatal: couldn't find remote ref merge" when creating pull requests, this is expected behavior. Pull requests only run tests and do not trigger deployments. Only pushes to `guess_feature` or `clerk_feature_dev` branches will deploy to the dev server.
+
+### /clerk sync Not Finding Receipts
+If `/clerk sync` reports no receipts even though you've processed them:
+
+1. **Check data directory configuration** in your `.env` file:
+   ```bash
+   DATA_DIR=data  # ✅ Correct (relative path)
+   # NOT: DATA_DIR=/opt/discord-bot/data  # ❌ Wrong
+   ```
+
+2. **Verify receipts exist** in the correct location:
+   - Local: `data/receipts/`
+   - GCP: `/opt/discord-bot/app/data/receipts/`
+
+3. **For GCP deployments**, see [docs/DATA_DIRECTORY_FIX.md](docs/DATA_DIRECTORY_FIX.md) for detailed troubleshooting steps.
+
+### Permission Issues on GCP
+If you encounter permission errors when processing receipts on GCP:
+```bash
+# SSH into GCP server
+sudo chown -R botuser:botuser /opt/discord-bot/app/data
+sudo chmod -R 755 /opt/discord-bot/app/data
+sudo systemctl restart discord-bot-dev.service
+```
+
 ## License
 
 MIT License - See LICENSE file for details.

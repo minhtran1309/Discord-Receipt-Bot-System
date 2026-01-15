@@ -717,6 +717,62 @@ python -c "import os; from dotenv import load_dotenv; load_dotenv(); print(os.ge
 bash scripts/deploy.sh development
 ```
 
+### Pull Request Deployment Error: "fatal: couldn't find remote ref merge"
+
+**Symptom**: Pull requests fail with error `fatal: couldn't find remote ref merge` during deployment.
+
+**Cause**: GitHub Actions tries to deploy on pull request events, but `GITHUB_REF` for PRs is `refs/pull/123/merge` which doesn't exist as a remote branch.
+
+**Solution**: This has been fixed in the workflow. Pull requests now only run tests without attempting deployment. The workflow uses `if: github.event_name == 'push'` to skip deployment for PRs.
+
+**Verification**:
+- Push events (to `guess_feature` or `clerk_feature_dev`) → Tests + Deployment
+- Pull requests (to `main`) → Tests only (no deployment)
+
+### Data Directory / /clerk sync Failures
+
+**Symptom**: `/clerk sync` command fails, or receipts are not found even though they were processed.
+
+**Causes**:
+1. Data directory path mismatch between bot code and systemd configuration
+2. Incorrect permissions on data directory
+3. Wrong `DATA_DIR` in `.env` file
+
+**Solution**:
+
+1. **Verify data directory location**:
+   ```bash
+   # On GCP server
+   ls -la /opt/discord-bot/app/data/receipts/
+   ls -la /opt/discord-bot/app/data/items/
+   ```
+
+2. **Check .env configuration**:
+   ```bash
+   # Should use relative path (relative to WorkingDirectory)
+   DATA_DIR=data
+
+   # NOT absolute path like:
+   # DATA_DIR=/opt/discord-bot/data  ❌ WRONG
+   ```
+
+3. **Re-run systemd setup** (fixes ReadWritePaths):
+   ```bash
+   cd /opt/discord-bot/app
+   git pull origin guess_feature
+   bash scripts/setup_systemd_services.sh
+   sudo systemctl daemon-reload
+   sudo systemctl restart discord-bot-dev.service
+   ```
+
+4. **Fix permissions**:
+   ```bash
+   sudo chown -R botuser:botuser /opt/discord-bot/app/data
+   sudo chmod -R 755 /opt/discord-bot/app/data
+   ```
+
+**See also**: [docs/DATA_DIRECTORY_FIX.md](DATA_DIRECTORY_FIX.md) for complete troubleshooting guide.
+
 ## Security Best Practices
 
 1. **Never commit secrets**:
