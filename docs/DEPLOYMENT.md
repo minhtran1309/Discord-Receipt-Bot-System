@@ -231,6 +231,7 @@ GOOGLE_SPREADSHEET_ID=<production_sheet_id>
 CONFIDENCE_THRESHOLD=0.7
 DATA_DIR=data
 LOG_LEVEL=INFO
+BOT_NAME=Receipt Bot (Production)
 ```
 
 Create development environment file:
@@ -257,6 +258,7 @@ GOOGLE_SPREADSHEET_ID=<development_sheet_id>
 CONFIDENCE_THRESHOLD=0.7
 DATA_DIR=data
 LOG_LEVEL=DEBUG
+BOT_NAME=Receipt Bot (Dev)
 ```
 
 Set proper permissions:
