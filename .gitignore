@@ -39,8 +39,14 @@ discord_env/
 .env.production
 .env.development
 
-# Data files
+# Data files - Confidential receipt data
 data/receipts/*.json
+data/receipts/*.jpg
+data/receipts/*.jpeg
+data/receipts/*.png
+data/receipts/*.HEIC
+data/receipts/*.heic
+data/items/*.tsv
 data/corrections.json
 
 # Google credentials
