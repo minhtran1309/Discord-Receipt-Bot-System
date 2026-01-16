@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+
 from bot.models import Receipt, ReceiptItem
 
 aldi_ocr_text = """ALDI STORES
@@ -95,6 +96,7 @@ Have Your Say
 
 Give us your in-store experience feedback by scanning the QR code below."""
 
+
 def parse_receipt(ocr_text: str) -> Receipt:
     """Parse OCR text into a Receipt object (improved implementation)."""
     lines = [line.strip() for line in ocr_text.strip().split("\n") if line.strip()]
@@ -108,7 +110,11 @@ def parse_receipt(ocr_text: str) -> Receipt:
     for line in lines:
         line_lower = line.lower()
         # Match "total" but not "subtotal"
-        if line_lower.startswith("total") or " total " in line_lower or line_lower.endswith("total"):
+        if (
+            line_lower.startswith("total")
+            or " total " in line_lower
+            or line_lower.endswith("total")
+        ):
             # Extract price from line (take the last match)
             matches = re.findall(r"\$?(\d+\.\d{2})", line)
             if matches:
@@ -117,9 +123,21 @@ def parse_receipt(ocr_text: str) -> Receipt:
 
     # Keywords to skip (not actual items)
     skip_keywords = [
-        "total", "subtotal", "amount", "change", "rounding",
-        "gst", "tax", "card", "eft", "credit", "debit",
-        "sales", "payment", "net", "cash"
+        "total",
+        "subtotal",
+        "amount",
+        "change",
+        "rounding",
+        "gst",
+        "tax",
+        "card",
+        "eft",
+        "credit",
+        "debit",
+        "sales",
+        "payment",
+        "net",
+        "cash",
     ]
 
     # Basic item extraction (simplified)
@@ -140,19 +158,19 @@ def parse_receipt(ocr_text: str) -> Receipt:
 
             # Skip lines that look like dates (e.g., "30.12.25" or "02/01/2026")
             # Check if line contains date patterns: DD.MM.YY or MM/DD/YYYY
-            if re.search(r'\d{1,2}[./]\d{1,2}[./]\d{2,4}', line):
+            if re.search(r"\d{1,2}[./]\d{1,2}[./]\d{2,4}", line):
                 continue
 
             # Skip lines that look like transaction codes or reference numbers
             # (typically have many digits and special characters)
-            if re.search(r'[*#]\d+|[A-Z]\d{4,}|REF|TRANS|TERMINAL', line, re.IGNORECASE):
+            if re.search(
+                r"[*#]\d+|[A-Z]\d{4,}|REF|TRANS|TERMINAL", line, re.IGNORECASE
+            ):
                 continue
 
             # Try to create ReceiptItem, skip if validation fails
             try:
-                items.append(
-                    ReceiptItem(raw_name=name.strip(), price=price_float)
-                )
+                items.append(ReceiptItem(raw_name=name.strip(), price=price_float))
             except Exception:
                 # Skip invalid items silently
                 continue
@@ -165,6 +183,7 @@ def parse_receipt(ocr_text: str) -> Receipt:
         items=items,
         total=total,
     )
+
 
 # Test Aldi receipt
 print("=" * 70)

@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+
 from bot.models import Receipt, ReceiptItem
 
 bunnings_ocr_text = """# BUNNINGS warehouse
@@ -48,6 +49,7 @@ www.onepass.com.au
 Have Your Say
 
 Give us your in-store experience feedback by scanning the QR code below."""
+
 
 def parse_receipt(ocr_text: str):
     """Parse OCR text into a Receipt object (basic implementation)."""
@@ -99,6 +101,7 @@ def parse_receipt(ocr_text: str):
         items=items,
         total=total,
     )
+
 
 # Test parsing
 print("Testing Bunnings receipt parsing:")

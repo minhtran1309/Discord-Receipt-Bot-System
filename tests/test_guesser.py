@@ -1,8 +1,9 @@
 """Tests for item guesser."""
 
 import pytest
-from bot.services.guesser import ItemGuesser
+
 from bot.models import ReceiptItem
+from bot.services.guesser import ItemGuesser
 
 
 @pytest.mark.asyncio
@@ -38,7 +39,7 @@ async def test_guess_batch_all_corrections():
         model="openai/gpt-4o-mini",
         corrections={
             "GV MLK|Walmart": "Great Value Milk",
-            "BNS CHKN|Walmart": "Boneless Chicken Breast"
+            "BNS CHKN|Walmart": "Boneless Chicken Breast",
         },
     )
 

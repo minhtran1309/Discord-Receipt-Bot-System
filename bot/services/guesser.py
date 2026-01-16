@@ -1,9 +1,11 @@
 """OpenRouter SDK integration for item name guessing."""
 
-from openrouter import OpenRouter
-from bot.models import GuessResult, ReceiptItem
-from typing import Dict, List
 import json
+from typing import Dict, List
+
+from openrouter import OpenRouter
+
+from bot.models import GuessResult, ReceiptItem
 
 
 class ItemGuesser:
@@ -50,10 +52,7 @@ class ItemGuesser:
             if key in self.corrections:
                 # Use cached correction
                 results.append(
-                    GuessResult(
-                        product_name=self.corrections[key],
-                        confidence=1.0
-                    )
+                    GuessResult(product_name=self.corrections[key], confidence=1.0)
                 )
             else:
                 # Need to call API
@@ -76,14 +75,11 @@ class ItemGuesser:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a grocery item identifier. Respond only with valid JSON."
+                        "content": "You are a grocery item identifier. Respond only with valid JSON.",
                     },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
+                    {"role": "user", "content": prompt},
                 ],
-                response_format={"type": "json_object"}  # Ensure JSON response
+                response_format={"type": "json_object"},  # Ensure JSON response
             )
 
             # Parse batch response
@@ -95,7 +91,7 @@ class ItemGuesser:
                 item_data = guesses.get(item.raw_name, {})
                 guess_result = GuessResult(
                     product_name=item_data.get("product_name", item.raw_name),
-                    confidence=item_data.get("confidence", 0.5)
+                    confidence=item_data.get("confidence", 0.5),
                 )
                 # Insert at the correct position
                 results[items_to_guess_indices[idx]] = guess_result
@@ -103,10 +99,7 @@ class ItemGuesser:
         except Exception as e:
             # If API fails, return raw names with low confidence
             for idx, item in enumerate(items_to_guess):
-                guess_result = GuessResult(
-                    product_name=item.raw_name,
-                    confidence=0.0
-                )
+                guess_result = GuessResult(product_name=item.raw_name, confidence=0.0)
                 results[items_to_guess_indices[idx]] = guess_result
 
         return results

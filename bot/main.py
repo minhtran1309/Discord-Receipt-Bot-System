@@ -1,18 +1,19 @@
 """Main entry point for the Discord Receipt Bot."""
 
+import logging
+
 import discord
 from discord.ext import commands
-import logging
-from bot.config import get_settings
-from bot.storage import Storage
-from bot.services.ocr import OCRService
-from bot.services.ai_extractor import AIExtractor
-from bot.services.guesser import ItemGuesser
-from bot.services.sheets import SheetsService
-from bot.cogs.receipt import ReceiptCog
+
 # from bot.cogs.guess import GuessCog
 from bot.cogs.clerk import ClerkCog
-
+from bot.cogs.receipt import ReceiptCog
+from bot.config import get_settings
+from bot.services.ai_extractor import AIExtractor
+from bot.services.guesser import ItemGuesser
+from bot.services.ocr import OCRService
+from bot.services.sheets import SheetsService
+from bot.storage import Storage
 
 # Setup logging
 logging.basicConfig(
@@ -70,7 +71,17 @@ class ReceiptBot(commands.Bot):
         #     ("Clerk", ClerkCog(self, self.sheets_service, self.storage)),
         # ]
         cogs_to_load = [
-            ("Receipt", ReceiptCog(self, self.ocr_service, self.storage, self.guesser, self.ai_extractor, self.settings)),
+            (
+                "Receipt",
+                ReceiptCog(
+                    self,
+                    self.ocr_service,
+                    self.storage,
+                    self.guesser,
+                    self.ai_extractor,
+                    self.settings,
+                ),
+            ),
             # ("Guess", GuessCog(self, self.guesser, self.storage, self.settings)),
             ("Clerk", ClerkCog(self, self.sheets_service, self.storage)),
         ]
@@ -88,7 +99,9 @@ class ReceiptBot(commands.Bot):
                 guild = discord.Object(id=self.settings.discord_guild_id)
                 self.tree.copy_global_to(guild=guild)
                 synced = await self.tree.sync(guild=guild)
-                logger.info(f"Synced {len(synced)} commands to guild {self.settings.discord_guild_id}")
+                logger.info(
+                    f"Synced {len(synced)} commands to guild {self.settings.discord_guild_id}"
+                )
             else:
                 synced = await self.tree.sync()
                 logger.info(f"Synced {len(synced)} commands globally")
@@ -104,8 +117,7 @@ class ReceiptBot(commands.Bot):
         # Set bot status
         await self.change_presence(
             activity=discord.Activity(
-                type=discord.ActivityType.watching,
-                name="receipts 📝"
+                type=discord.ActivityType.watching, name="receipts 📝"
             )
         )
 

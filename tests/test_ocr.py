@@ -1,8 +1,10 @@
 """Tests for OCR service."""
 
-import pytest
 import os
 from pathlib import Path
+
+import pytest
+
 from bot.services.ocr import OCRService
 
 
@@ -24,7 +26,7 @@ async def test_ocr_service_initialization():
 @pytest.mark.asyncio
 @pytest.mark.skipif(
     not os.getenv("MISTRAL_API_KEY"),
-    reason="MISTRAL_API_KEY not set - skipping live OCR test"
+    reason="MISTRAL_API_KEY not set - skipping live OCR test",
 )
 async def test_ocr_with_aldi_receipt():
     """Test OCR processing with real Aldi receipt image."""
@@ -69,7 +71,7 @@ async def test_ocr_with_aldi_receipt():
             "ocr_model": model,
             "ocr_text": ocr_text,
             "text_length": len(ocr_text),
-            "status": "success"
+            "status": "success",
         }
 
         output_file = output_dir / "aldi_receipt_1_ocr_output.json"
@@ -78,13 +80,13 @@ async def test_ocr_with_aldi_receipt():
 
         print(f"\n{'='*60}")
         print(f"OCR Output saved to: {output_file}")
-        print('='*60)
+        print("=" * 60)
         print("OCR Text Preview (first 500 chars):")
-        print('='*60)
+        print("=" * 60)
         print(ocr_text[:500])
-        print('='*60)
+        print("=" * 60)
         print(f"Full output saved to: {output_file}")
-        print('='*60)
+        print("=" * 60)
 
     except Exception as e:
         # Save error to JSON
@@ -97,7 +99,7 @@ async def test_ocr_with_aldi_receipt():
             "timestamp": datetime.now().isoformat(),
             "status": "error",
             "error_message": str(e),
-            "error_type": type(e).__name__
+            "error_type": type(e).__name__,
         }
 
         output_file = output_dir / "aldi_receipt_1_ocr_error.json"
@@ -113,19 +115,17 @@ async def test_ocr_with_aldi_receipt():
 async def test_ocr_with_mock_receipt():
     """Test OCR with a minimal mock image (for CI/CD without API key)."""
     from io import BytesIO
+
     from PIL import Image
 
     # Create a simple test image
-    img = Image.new('RGB', (100, 100), color='white')
+    img = Image.new("RGB", (100, 100), color="white")
     img_bytes = BytesIO()
-    img.save(img_bytes, format='PNG')
+    img.save(img_bytes, format="PNG")
     img_bytes = img_bytes.getvalue()
 
     # Test that service can be initialized and handle bytes
-    service = OCRService(
-        api_key="test_key",
-        model="mistral-ocr-latest"
-    )
+    service = OCRService(api_key="test_key", model="mistral-ocr-latest")
 
     # We can't actually call the API without credentials,
     # but we can verify the image bytes are valid

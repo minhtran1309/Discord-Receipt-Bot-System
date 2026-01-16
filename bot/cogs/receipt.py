@@ -1,17 +1,19 @@
 """Receipt processing cog - handles /receipt commands."""
 
+import re
+from datetime import datetime
+
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import datetime
-from bot.services.ocr import OCRService
+
+from bot.budget_storage import BudgetStorage
+from bot.config import Settings
+from bot.models import Receipt, ReceiptItem
 from bot.services.ai_extractor import AIExtractor
 from bot.services.guesser import ItemGuesser
+from bot.services.ocr import OCRService
 from bot.storage import Storage
-from bot.budget_storage import BudgetStorage
-from bot.models import Receipt, ReceiptItem
-from bot.config import Settings
-import re
 
 
 class ReceiptCog(commands.Cog):
@@ -80,7 +82,9 @@ class ReceiptCog(commands.Cog):
             # Price with discount
             if item.discount > 0:
                 original_price = item.price + item.discount
-                lines.append(f"   ├─ Price: ~~${original_price:.2f}~~ ${item.price:.2f} (saved ${item.discount:.2f})")
+                lines.append(
+                    f"   ├─ Price: ~~${original_price:.2f}~~ ${item.price:.2f} (saved ${item.discount:.2f})"
+                )
             else:
                 lines.append(f"   ├─ Price: ${item.price:.2f}")
 
@@ -97,7 +101,9 @@ class ReceiptCog(commands.Cog):
 
         return "\n".join(lines)
 
-    @receipt_group.command(name="process", description="Upload and process a receipt image")
+    @receipt_group.command(
+        name="process", description="Upload and process a receipt image"
+    )
     async def process(
         self, interaction: discord.Interaction, image: discord.Attachment
     ):
@@ -112,8 +118,8 @@ class ReceiptCog(commands.Cog):
             await interaction.followup.send("🔍 Processing receipt with OCR...")
             ocr_text = await self.ocr_service.process_image(
                 image_bytes,
-                openrouter_key=self.config.openrouter_api_key,
-                fallback_model=self.config.fallback_ocr_model
+                openrouter_key=self.settings.openrouter_api_key,
+                fallback_model=self.settings.fallback_ocr_model,
             )
 
             # Step 3: AI Extraction
@@ -125,7 +131,9 @@ class ReceiptCog(commands.Cog):
             validation_issues = self._validate_receipt(parsed)
             if validation_issues:
                 issues_text = "\n".join(f"• {issue}" for issue in validation_issues)
-                await interaction.followup.send(f"⚠️ **Validation Issues:**\n{issues_text}")
+                await interaction.followup.send(
+                    f"⚠️ **Validation Issues:**\n{issues_text}"
+                )
 
             # Step 4: Save receipt (unguessed)
             filename = self.storage.save_receipt(parsed)
@@ -172,7 +180,9 @@ class ReceiptCog(commands.Cog):
             # Items in TOON format
             if parsed.items:
                 items_display = self._format_items_toon(parsed.items, max_items=15)
-                embed.add_field(name="📋 Items Details", value=items_display, inline=False)
+                embed.add_field(
+                    name="📋 Items Details", value=items_display, inline=False
+                )
 
             # Show needs review warning if applicable
             if needs_review > 0:
@@ -182,7 +192,7 @@ class ReceiptCog(commands.Cog):
                         f"{needs_review} items need review.\n"
                         f"Use `/receipt correct_name <item_number> <new_name>` to fix."
                     ),
-                    inline=False
+                    inline=False,
                 )
 
             await interaction.followup.send(embed=embed)
@@ -229,7 +239,7 @@ class ReceiptCog(commands.Cog):
         embed.add_field(
             name="Status",
             value="✓ Verified" if receipt.verified else "⏳ Unverified",
-            inline=True
+            inline=True,
         )
 
         # Add items in TOON format
@@ -293,16 +303,13 @@ class ReceiptCog(commands.Cog):
         else:
             await interaction.response.send_message("Receipt not found.")
 
-    @receipt_group.command(
-        name="correct_name",
-        description="Correct an item's name"
-    )
+    @receipt_group.command(name="correct_name", description="Correct an item's name")
     async def correct_name(
         self,
         interaction: discord.Interaction,
         filename: str,
         item_index: int,
-        new_name: str
+        new_name: str,
     ):
         """Correct an item's guessed name.
 
@@ -346,35 +353,27 @@ class ReceiptCog(commands.Cog):
         self.storage.save_receipt(receipt)
 
         # Send confirmation
-        embed = discord.Embed(
-            title="✅ Name Corrected",
-            color=0x00FF00
-        )
+        embed = discord.Embed(title="✅ Name Corrected", color=0x00FF00)
         embed.add_field(
-            name="Item",
-            value=f"**{item_index}. {item.raw_name}**",
-            inline=False
+            name="Item", value=f"**{item_index}. {item.raw_name}**", inline=False
         )
         embed.add_field(name="Old Name", value=old_name, inline=True)
         embed.add_field(name="New Name", value=new_name, inline=True)
         embed.add_field(
             name="Note",
             value=f"Correction saved to `corrections.json` for future receipts from {receipt.store}",
-            inline=False
+            inline=False,
         )
 
         await interaction.followup.send(embed=embed)
 
-    @receipt_group.command(
-        name="correct_price",
-        description="Correct an item's price"
-    )
+    @receipt_group.command(name="correct_price", description="Correct an item's price")
     async def correct_price(
         self,
         interaction: discord.Interaction,
         filename: str,
         item_index: int,
-        new_price: float
+        new_price: float,
     ):
         """Correct an item's price.
 
@@ -417,35 +416,27 @@ class ReceiptCog(commands.Cog):
         self.storage.save_receipt(receipt)
 
         # Send confirmation
-        embed = discord.Embed(
-            title="✅ Price Corrected",
-            color=0x00FF00
-        )
+        embed = discord.Embed(title="✅ Price Corrected", color=0x00FF00)
         embed.add_field(
             name="Item",
             value=f"**{item_index}. {item.guessed_name or item.raw_name}**",
-            inline=False
+            inline=False,
         )
         embed.add_field(name="Old Price", value=f"${old_price:.2f}", inline=True)
         embed.add_field(name="New Price", value=f"${new_price:.2f}", inline=True)
-        embed.add_field(
-            name="New Total",
-            value=f"${receipt.total:.2f}",
-            inline=False
-        )
+        embed.add_field(name="New Total", value=f"${receipt.total:.2f}", inline=False)
 
         await interaction.followup.send(embed=embed)
 
     @receipt_group.command(
-        name="correct_category",
-        description="Correct an item's category"
+        name="correct_category", description="Correct an item's category"
     )
     async def correct_category(
         self,
         interaction: discord.Interaction,
         filename: str,
         item_index: int,
-        new_category: str
+        new_category: str,
     ):
         """Correct an item's category.
 
@@ -458,8 +449,15 @@ class ReceiptCog(commands.Cog):
 
         # Valid categories
         valid_categories = [
-            "Produce", "Meat", "Dairy", "Bakery", "Pantry",
-            "Frozen", "Beverage", "Household", "Other"
+            "Produce",
+            "Meat",
+            "Dairy",
+            "Bakery",
+            "Pantry",
+            "Frozen",
+            "Beverage",
+            "Household",
+            "Other",
         ]
 
         # Validate category
@@ -493,21 +491,20 @@ class ReceiptCog(commands.Cog):
         self.storage.save_receipt(receipt)
 
         # Send confirmation
-        embed = discord.Embed(
-            title="✅ Category Corrected",
-            color=0x00FF00
-        )
+        embed = discord.Embed(title="✅ Category Corrected", color=0x00FF00)
         embed.add_field(
             name="Item",
             value=f"**{item_index}. {item.guessed_name or item.raw_name}**",
-            inline=False
+            inline=False,
         )
         embed.add_field(name="Old Category", value=old_category, inline=True)
         embed.add_field(name="New Category", value=new_category, inline=True)
 
         await interaction.followup.send(embed=embed)
 
-    @receipt_group.command(name="view_store", description="View store purchases by month or year")
+    @receipt_group.command(
+        name="view_store", description="View store purchases by month or year"
+    )
     async def view_store(
         self,
         interaction: discord.Interaction,
@@ -527,9 +524,9 @@ class ReceiptCog(commands.Cog):
         """
         await interaction.response.defer()
 
-        from pathlib import Path
         import csv
         from datetime import datetime
+        from pathlib import Path
 
         try:
             # Get items directory
@@ -563,7 +560,9 @@ class ReceiptCog(commands.Cog):
                             if file_date.strftime("%Y-%m") != period:
                                 continue
                         else:
-                            await interaction.followup.send("❌ Invalid period format. Use YYYY-MM or YYYY")
+                            await interaction.followup.send(
+                                "❌ Invalid period format. Use YYYY-MM or YYYY"
+                            )
                             return
 
                     matching_files.append(tsv_file)
@@ -572,7 +571,9 @@ class ReceiptCog(commands.Cog):
 
             if not matching_files:
                 period_text = f" for {period}" if period else ""
-                await interaction.followup.send(f"❌ No purchases found for {store}{period_text}")
+                await interaction.followup.send(
+                    f"❌ No purchases found for {store}{period_text}"
+                )
                 return
 
             # Read and aggregate all items
@@ -608,29 +609,31 @@ class ReceiptCog(commands.Cog):
             # Create embed
             embed = discord.Embed(
                 title=f"📊 {store} Purchases{period_text}",
-                color=0x3498db,
-                timestamp=datetime.now()
+                color=0x3498DB,
+                timestamp=datetime.now(),
             )
 
             # Summary stats
             embed.add_field(
                 name="Summary",
                 value=f"**Total Items:** {len(all_items)}\n"
-                      f"**Total Spent:** ${total_spent:.2f}\n"
-                      f"**Receipts:** {len(matching_files)}",
-                inline=False
+                f"**Total Spent:** ${total_spent:.2f}\n"
+                f"**Receipts:** {len(matching_files)}",
+                inline=False,
             )
 
             # Category breakdown
             if category_totals:
                 category_text = "\n".join(
                     f"• {cat}: ${amt:.2f}"
-                    for cat, amt in sorted(category_totals.items(), key=lambda x: x[1], reverse=True)
+                    for cat, amt in sorted(
+                        category_totals.items(), key=lambda x: x[1], reverse=True
+                    )
                 )
                 embed.add_field(
                     name="💰 By Category",
                     value=category_text[:1024],  # Discord field limit
-                    inline=False
+                    inline=False,
                 )
 
             # Recent items (last 10)
@@ -643,7 +646,7 @@ class ReceiptCog(commands.Cog):
             embed.add_field(
                 name=f"🛒 Recent Items (Last {len(recent_items)})",
                 value=items_text[:1024] if items_text else "None",
-                inline=False
+                inline=False,
             )
 
             # Top items by spending
@@ -657,15 +660,14 @@ class ReceiptCog(commands.Cog):
                     pass
 
             if item_spending:
-                top_items = sorted(item_spending.items(), key=lambda x: x[1], reverse=True)[:5]
+                top_items = sorted(
+                    item_spending.items(), key=lambda x: x[1], reverse=True
+                )[:5]
                 top_text = "\n".join(
-                    f"• {name[:35]}: ${total:.2f}"
-                    for name, total in top_items
+                    f"• {name[:35]}: ${total:.2f}" for name, total in top_items
                 )
                 embed.add_field(
-                    name="🏆 Top Items by Spending",
-                    value=top_text[:1024],
-                    inline=False
+                    name="🏆 Top Items by Spending", value=top_text[:1024], inline=False
                 )
 
             embed.set_footer(text=f"Data from {len(matching_files)} receipt(s)")
@@ -688,7 +690,11 @@ class ReceiptCog(commands.Cog):
         for line in lines:
             line_lower = line.lower()
             # Match "total" but not "subtotal"
-            if line_lower.startswith("total") or " total " in line_lower or line_lower.endswith("total"):
+            if (
+                line_lower.startswith("total")
+                or " total " in line_lower
+                or line_lower.endswith("total")
+            ):
                 # Extract price from line (take the last match)
                 matches = re.findall(r"\$?(\d+\.\d{2})", line)
                 if matches:
@@ -697,9 +703,21 @@ class ReceiptCog(commands.Cog):
 
         # Keywords to skip (not actual items)
         skip_keywords = [
-            "total", "subtotal", "amount", "change", "rounding",
-            "gst", "tax", "card", "eft", "credit", "debit",
-            "sales", "payment", "net", "cash"
+            "total",
+            "subtotal",
+            "amount",
+            "change",
+            "rounding",
+            "gst",
+            "tax",
+            "card",
+            "eft",
+            "credit",
+            "debit",
+            "sales",
+            "payment",
+            "net",
+            "cash",
         ]
 
         # Basic item extraction (simplified)
@@ -720,19 +738,17 @@ class ReceiptCog(commands.Cog):
 
                 # Skip lines that look like dates (e.g., "30.12.25" or "02/01/2026")
                 # Check if line contains date patterns: DD.MM.YY or MM/DD/YYYY
-                if re.search(r'\d{1,2}[./]\d{1,2}[./]\d{2,4}', line):
+                if re.search(r"\d{1,2}[./]\d{1,2}[./]\d{2,4}", line):
                     continue
 
                 # Skip lines that look like transaction codes or reference numbers
                 # Lines starting with * or # followed by digits, or containing REF/TRANS/TERMINAL
-                if re.search(r'^[*#]\d+|REF|TRANS|TERMINAL', line, re.IGNORECASE):
+                if re.search(r"^[*#]\d+|REF|TRANS|TERMINAL", line, re.IGNORECASE):
                     continue
 
                 # Try to create ReceiptItem, skip if validation fails
                 try:
-                    items.append(
-                        ReceiptItem(raw_name=name.strip(), price=price_float)
-                    )
+                    items.append(ReceiptItem(raw_name=name.strip(), price=price_float))
                 except Exception:
                     # Skip invalid items silently
                     continue
@@ -791,13 +807,17 @@ class ReceiptCog(commands.Cog):
         # Write items to TSV
         with open(tsv_path, "w", encoding="utf-8") as f:
             # Write header
-            f.write("raw_name\tguessed_name\tconfidence\tcategory\tunit\tprice\tdiscount\tsku\tstore\tdate\n")
+            f.write(
+                "raw_name\tguessed_name\tconfidence\tcategory\tunit\tprice\tdiscount\tsku\tstore\tdate\n"
+            )
 
             # Write each item
             for item in receipt.items:
                 raw_name = item.raw_name or ""
                 guessed_name = item.guessed_name or ""
-                confidence = f"{item.confidence:.4f}" if item.confidence is not None else ""
+                confidence = (
+                    f"{item.confidence:.4f}" if item.confidence is not None else ""
+                )
                 category = item.category or "Other"
                 unit = item.unit or "ea"
                 price = f"{item.price:.2f}"
@@ -806,7 +826,9 @@ class ReceiptCog(commands.Cog):
                 store = receipt.store
                 date = receipt.datetime.strftime("%Y-%m-%d")
 
-                f.write(f"{raw_name}\t{guessed_name}\t{confidence}\t{category}\t{unit}\t{price}\t{discount}\t{sku}\t{store}\t{date}\n")
+                f.write(
+                    f"{raw_name}\t{guessed_name}\t{confidence}\t{category}\t{unit}\t{price}\t{discount}\t{sku}\t{store}\t{date}\n"
+                )
 
 
 async def setup(bot: commands.Bot):

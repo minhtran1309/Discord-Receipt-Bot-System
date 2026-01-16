@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+
 from bot.models import Receipt, ReceiptItem
 
 aldi_ocr_text = """ALDI STORES
@@ -95,6 +96,7 @@ Have Your Say
 
 Give us your in-store experience feedback by scanning the QR code below."""
 
+
 def parse_receipt(ocr_text: str) -> Receipt:
     """Parse OCR text into a Receipt object (basic implementation)."""
     lines = [line.strip() for line in ocr_text.strip().split("\n") if line.strip()]
@@ -114,9 +116,21 @@ def parse_receipt(ocr_text: str) -> Receipt:
 
     # Keywords to skip (not actual items)
     skip_keywords = [
-        "total", "subtotal", "amount", "change", "rounding",
-        "gst", "tax", "card", "eft", "credit", "debit",
-        "sales", "payment", "net", "cash"
+        "total",
+        "subtotal",
+        "amount",
+        "change",
+        "rounding",
+        "gst",
+        "tax",
+        "card",
+        "eft",
+        "credit",
+        "debit",
+        "sales",
+        "payment",
+        "net",
+        "cash",
     ]
 
     # Basic item extraction (simplified)
@@ -137,9 +151,7 @@ def parse_receipt(ocr_text: str) -> Receipt:
 
             # Try to create ReceiptItem, skip if validation fails
             try:
-                items.append(
-                    ReceiptItem(raw_name=name.strip(), price=price_float)
-                )
+                items.append(ReceiptItem(raw_name=name.strip(), price=price_float))
             except Exception:
                 # Skip invalid items silently
                 continue
@@ -152,6 +164,7 @@ def parse_receipt(ocr_text: str) -> Receipt:
         items=items,
         total=total,
     )
+
 
 # Test Aldi receipt
 print("=" * 70)

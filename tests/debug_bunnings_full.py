@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+
 from bot.models import Receipt, ReceiptItem
 
 bunnings_ocr_text = """# BUNNINGS warehouse
@@ -52,16 +53,28 @@ Give us your in-store experience feedback by scanning the QR code below."""
 lines = [line.strip() for line in bunnings_ocr_text.strip().split("\n") if line.strip()]
 
 skip_keywords = [
-    "total", "subtotal", "amount", "change", "rounding",
-    "gst", "tax", "card", "eft", "credit", "debit",
-    "sales", "payment", "net", "cash"
+    "total",
+    "subtotal",
+    "amount",
+    "change",
+    "rounding",
+    "gst",
+    "tax",
+    "card",
+    "eft",
+    "credit",
+    "debit",
+    "sales",
+    "payment",
+    "net",
+    "cash",
 ]
 
 print("Looking for items with prices:")
 print("=" * 70)
 
 for idx, line in enumerate(lines):
-    matches = re.findall(r'(.+?)\s+\$?(\d+\.\d{2})', line)
+    matches = re.findall(r"(.+?)\s+\$?(\d+\.\d{2})", line)
     if matches:
         name, price = matches[0]
         price_float = float(price)
@@ -73,18 +86,20 @@ for idx, line in enumerate(lines):
 
         # Skip lines containing common non-item keywords
         if any(keyword in line.lower() for keyword in skip_keywords):
-            print(f"Line {idx}: SKIP - keyword ({[kw for kw in skip_keywords if kw in line.lower()]})")
+            print(
+                f"Line {idx}: SKIP - keyword ({[kw for kw in skip_keywords if kw in line.lower()]})"
+            )
             continue
 
         # Skip lines that look like dates
-        if re.search(r'\d{1,2}[./]\d{1,2}[./]\d{2,4}', line):
+        if re.search(r"\d{1,2}[./]\d{1,2}[./]\d{2,4}", line):
             print(f"Line {idx}: SKIP - date pattern")
             continue
 
         # Skip transaction codes
-        if re.search(r'^[*#]\d+|REF|TRANS|TERMINAL', line, re.IGNORECASE):
+        if re.search(r"^[*#]\d+|REF|TRANS|TERMINAL", line, re.IGNORECASE):
             print(f"Line {idx}: SKIP - transaction pattern")
             continue
 
-        print(f"Line {idx}: ACCEPT - \"{name.strip()}\" = ${price_float:.2f}")
+        print(f'Line {idx}: ACCEPT - "{name.strip()}" = ${price_float:.2f}')
         print(f"  Full line: {line}")

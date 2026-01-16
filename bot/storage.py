@@ -1,9 +1,10 @@
 """JSON file storage operations."""
 
 import json
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
+
 from bot.models import Receipt
 
 

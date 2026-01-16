@@ -192,6 +192,21 @@ EOF
 
 ### Step 2: Environment Configuration
 
+**⚠️ IMPORTANT**: Do not add inline comments after values in `.env` files! Pydantic will include the entire line as the value, causing parsing errors.
+
+**Example of INCORRECT format**:
+```bash
+DISCORD_TOKEN=your_token_here  # This comment will break it!
+```
+
+**Example of CORRECT format**:
+```bash
+# Comment on its own line
+DISCORD_TOKEN=your_token_here
+```
+
+---
+
 Create production environment file:
 
 ```bash
@@ -201,7 +216,8 @@ sudo nano /opt/discord-bot/app/.env.production
 ```bash
 # Discord
 DISCORD_TOKEN=<production_token>
-DISCORD_GUILD_ID=  # Leave empty for global commands
+# Leave DISCORD_GUILD_ID empty for global commands
+DISCORD_GUILD_ID=
 
 # APIs
 MISTRAL_API_KEY=<production_key>
@@ -213,7 +229,7 @@ GOOGLE_SPREADSHEET_ID=<production_sheet_id>
 
 # App Settings
 CONFIDENCE_THRESHOLD=0.7
-DATA_DIR=/opt/discord-bot/data
+DATA_DIR=data
 LOG_LEVEL=INFO
 ```
 
@@ -224,21 +240,22 @@ sudo nano /opt/discord-bot/app/.env.development
 ```
 
 ```bash
-# Discord (use separate dev bot token)
+# Discord - use separate dev bot token
 DISCORD_TOKEN=<development_token>
-DISCORD_GUILD_ID=<your_test_server_id>  # Faster command sync
+# Set DISCORD_GUILD_ID to your test server ID for faster command sync
+DISCORD_GUILD_ID=<your_test_server_id>
 
 # APIs
 MISTRAL_API_KEY=<dev_key_or_same>
 OPENROUTER_API_KEY=<dev_key_or_same>
 
-# Google Sheets (separate dev spreadsheet)
+# Google Sheets - separate dev spreadsheet
 GOOGLE_CREDENTIALS_PATH=/opt/discord-bot/app/credentials/credentials.development.json
 GOOGLE_SPREADSHEET_ID=<development_sheet_id>
 
 # App Settings
 CONFIDENCE_THRESHOLD=0.7
-DATA_DIR=/opt/discord-bot/data-dev
+DATA_DIR=data
 LOG_LEVEL=DEBUG
 ```
 
@@ -292,11 +309,11 @@ Group=botuser
 WorkingDirectory=/opt/discord-bot/app
 
 # Environment
-Environment="PATH=/opt/miniconda/envs/discord-bot/bin:/usr/local/bin:/usr/bin:/bin"
-EnvironmentFile=/opt/discord-bot/app/.env
+Environment="PATH=/home/botuser/.conda/envs/discord_env/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/opt/discord-bot/app/.env.production
 
 # Execution
-ExecStart=/opt/miniconda/envs/discord-bot/bin/python -m bot.main
+ExecStart=/home/botuser/.conda/envs/discord_env/bin/python -m bot.main
 ExecReload=/bin/kill -HUP $MAINPID
 
 # Restart policy
@@ -340,10 +357,10 @@ User=botuser
 Group=botuser
 WorkingDirectory=/opt/discord-bot/app
 
-Environment="PATH=/opt/miniconda/envs/discord-bot/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=/home/botuser/.conda/envs/discord_env/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=/opt/discord-bot/app/.env.development
 
-ExecStart=/opt/miniconda/envs/discord-bot/bin/python -m bot.main
+ExecStart=/home/botuser/.conda/envs/discord_env/bin/python -m bot.main
 
 Restart=always
 RestartSec=10s
@@ -699,6 +716,62 @@ python -c "import os; from dotenv import load_dotenv; load_dotenv(); print(os.ge
 # Debug deployment script locally:
 bash scripts/deploy.sh development
 ```
+
+### Pull Request Deployment Error: "fatal: couldn't find remote ref merge"
+
+**Symptom**: Pull requests fail with error `fatal: couldn't find remote ref merge` during deployment.
+
+**Cause**: GitHub Actions tries to deploy on pull request events, but `GITHUB_REF` for PRs is `refs/pull/123/merge` which doesn't exist as a remote branch.
+
+**Solution**: This has been fixed in the workflow. Pull requests now only run tests without attempting deployment. The workflow uses `if: github.event_name == 'push'` to skip deployment for PRs.
+
+**Verification**:
+- Push events (to `guess_feature` or `clerk_feature_dev`) → Tests + Deployment
+- Pull requests (to `main`) → Tests only (no deployment)
+
+### Data Directory / /clerk sync Failures
+
+**Symptom**: `/clerk sync` command fails, or receipts are not found even though they were processed.
+
+**Causes**:
+1. Data directory path mismatch between bot code and systemd configuration
+2. Incorrect permissions on data directory
+3. Wrong `DATA_DIR` in `.env` file
+
+**Solution**:
+
+1. **Verify data directory location**:
+   ```bash
+   # On GCP server
+   ls -la /opt/discord-bot/app/data/receipts/
+   ls -la /opt/discord-bot/app/data/items/
+   ```
+
+2. **Check .env configuration**:
+   ```bash
+   # Should use relative path (relative to WorkingDirectory)
+   DATA_DIR=data
+
+   # NOT absolute path like:
+   # DATA_DIR=/opt/discord-bot/data  ❌ WRONG
+   ```
+
+3. **Re-run systemd setup** (fixes ReadWritePaths):
+   ```bash
+   cd /opt/discord-bot/app
+   git pull origin guess_feature
+   bash scripts/setup_systemd_services.sh
+   sudo systemctl daemon-reload
+   sudo systemctl restart discord-bot-dev.service
+   ```
+
+4. **Fix permissions**:
+   ```bash
+   sudo chown -R botuser:botuser /opt/discord-bot/app/data
+   sudo chmod -R 755 /opt/discord-bot/app/data
+   ```
+
+**See also**: [docs/DATA_DIRECTORY_FIX.md](DATA_DIRECTORY_FIX.md) for complete troubleshooting guide.
 
 ## Security Best Practices
 

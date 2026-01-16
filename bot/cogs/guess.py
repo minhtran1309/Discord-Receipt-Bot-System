@@ -3,9 +3,10 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+
+from bot.config import Settings
 from bot.services.guesser import ItemGuesser
 from bot.storage import Storage
-from bot.config import Settings
 
 
 class GuessCog(commands.Cog):
@@ -31,9 +32,7 @@ class GuessCog(commands.Cog):
     # REMOVED: /guess process command (now automatic after receipt processing)
     # REMOVED: /guess clear command
 
-    @guess_group.command(
-        name="correct", description="Manually correct an item name"
-    )
+    @guess_group.command(name="correct", description="Manually correct an item name")
     async def correct(
         self,
         interaction: discord.Interaction,

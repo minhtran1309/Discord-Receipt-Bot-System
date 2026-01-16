@@ -56,7 +56,7 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GOOGLE_CREDENTIALS_PROD }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -86,7 +86,7 @@ jobs:
 
           # Update conda environment
           source /opt/miniconda/etc/profile.d/conda.sh
-          conda activate discord-bot
+          conda activate discord_env
           conda env update -f environment.yml --prune --quiet
           pip install -r requirements.txt --quiet
 
