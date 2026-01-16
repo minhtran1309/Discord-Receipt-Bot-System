@@ -140,16 +140,26 @@ Return ONLY valid JSON, no markdown formatting."""
         except:
             dt = datetime.now()
 
+        # Helper to convert empty strings to None for optional float fields
+        def parse_optional_float(value):
+            """Convert empty strings or None to None, otherwise return float value."""
+            if value is None or value == "" or value == "N/A":
+                return None
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return None
+
         return Receipt(
             filename="",
             store=extracted_data.get("store_name", "Unknown Store"),
             datetime=dt,
             raw_ocr_text=raw_ocr_text,
             items=items,
-            total=extracted_data.get("total", 0.0),
-            subtotal=extracted_data.get("subtotal"),
-            tax=extracted_data.get("tax"),
-            discount_total=extracted_data.get("discount_total"),
-            payment_method=extracted_data.get("payment_method"),
+            total=float(extracted_data.get("total", 0.0)),
+            subtotal=parse_optional_float(extracted_data.get("subtotal")),
+            tax=parse_optional_float(extracted_data.get("tax")),
+            discount_total=parse_optional_float(extracted_data.get("discount_total")),
+            payment_method=extracted_data.get("payment_method") or None,
             verified=False,
         )
