@@ -11,10 +11,17 @@ from bot.models import Receipt
 class SheetsService:
     """Service for syncing receipt data to Google Sheets."""
 
-    def __init__(self, credentials_path: str, spreadsheet_id: str):
-        """Initialize Google Sheets service."""
+    def __init__(self, credentials_path: str, spreadsheet_id: str, bot_name: str = "Receipt Bot (Unknown)"):
+        """Initialize Google Sheets service.
+
+        Args:
+            credentials_path: Path to Google service account credentials JSON
+            spreadsheet_id: Google Sheets spreadsheet ID
+            bot_name: Name/identifier of bot instance for tracking (e.g., "Receipt Bot (Dev)")
+        """
         self.credentials_path = credentials_path
         self.spreadsheet_id = spreadsheet_id
+        self.bot_name = bot_name
         self.client = None
         self.worksheet = None
 
@@ -140,6 +147,7 @@ class SheetsService:
                 item.price,
                 item.category or "Other",
                 item.sku or "",
+                self.bot_name,  # Signature column - tracks which bot synced this data
             ]
             rows.append(row)
 
