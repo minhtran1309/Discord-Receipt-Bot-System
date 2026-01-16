@@ -58,6 +58,7 @@ class ReceiptBot(commands.Bot):
         self.sheets_service = SheetsService(
             self.settings.google_credentials_path,
             self.settings.google_spreadsheet_id,
+            self.settings.bot_name,
         )
 
     async def setup_hook(self):
