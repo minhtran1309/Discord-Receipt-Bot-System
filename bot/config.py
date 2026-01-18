@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     confidence_threshold: float = 0.7
     data_dir: str = "data"
     log_level: str = "INFO"
+    bot_name: str = "Receipt Bot (Local)"
 
     model_config = SettingsConfigDict(
         env_file=".env",
