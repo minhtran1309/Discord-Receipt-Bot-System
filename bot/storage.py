@@ -1,5 +1,6 @@
 """JSON file storage operations."""
 
+import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -15,10 +16,12 @@ class Storage:
         """Initialize storage with data directory."""
         self.data_dir = Path(data_dir)
         self.receipts_dir = self.data_dir / "receipts"
+        self.ocr_cache_dir = self.data_dir / "ocr_cache"
         self.corrections_file = self.data_dir / "corrections.json"
 
         # Create directories if they don't exist
         self.receipts_dir.mkdir(parents=True, exist_ok=True)
+        self.ocr_cache_dir.mkdir(parents=True, exist_ok=True)
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
         # Initialize corrections file
@@ -123,3 +126,14 @@ class Storage:
                 unsynced.append(receipt)
 
         return unsynced
+
+    def save_ocr_result(self, filename: str, ocr_text: str) -> None:
+        """Save OCR result to cache directory.
+
+        Args:
+            filename: Receipt filename (e.g., '2024-01-15_1430_walmart')
+            ocr_text: OCR text from API
+        """
+        cache_file = self.ocr_cache_dir / f"{filename}_ocr.txt"
+        with open(cache_file, "w", encoding="utf-8") as f:
+            f.write(ocr_text)

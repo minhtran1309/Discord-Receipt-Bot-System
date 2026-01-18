@@ -127,6 +127,19 @@ class ReceiptCog(commands.Cog):
             extracted_data = await self.ai_extractor.extract_receipt_data(ocr_text)
             parsed = self.ai_extractor.convert_to_receipt(extracted_data, ocr_text)
 
+            # Save OCR result to cache immediately (before further processing)
+            # Generate filename to match what save_receipt will create
+            dt = parsed.datetime
+            store_name = parsed.store.lower().replace(" ", "_")
+            cache_filename = f"{dt.strftime('%Y-%m-%d_%H%M')}_{store_name}"
+            self.storage.save_ocr_result(cache_filename, ocr_text)
+
+            # Show major store detection message
+            if hasattr(parsed, '_major_store_detected') and parsed._major_store_detected:
+                await interaction.followup.send(
+                    f"🏪 **{parsed.store} receipt detected!** Using specialized processing for accurate item extraction."
+                )
+
             # Validate extracted data
             validation_issues = self._validate_receipt(parsed)
             if validation_issues:

@@ -23,6 +23,44 @@ class AIExtractor:
         self.api_key = api_key
         self.model = model
 
+    def _detect_major_store(self, ocr_text: str) -> tuple[str | None, bool]:
+        """
+        Detect if receipt is from Woolworths or Coles.
+
+        Args:
+            ocr_text: Raw OCR text
+
+        Returns:
+            Tuple of (store_name or None, is_major_store_detected)
+        """
+        ocr_lower = ocr_text.lower()
+
+        # Woolworths detection
+        woolworths_indicators = [
+            "woolworths",
+            "woolies",
+            "www.woolworths.com.au",
+            "top ryde",  # Known Woolworths location
+            "ryde",
+            "auburn",
+        ]
+
+        for indicator in woolworths_indicators:
+            if indicator in ocr_lower:
+                return ("Woolworths", True)
+
+        # Coles detection
+        coles_indicators = [
+            "coles",
+            "www.coles.com.au",
+        ]
+
+        for indicator in coles_indicators:
+            if indicator in ocr_lower:
+                return ("Coles", True)
+
+        return (None, False)
+
     async def extract_receipt_data(self, ocr_text: str) -> Dict[str, Any]:
         """
         Extract structured data from OCR text using AI.
@@ -31,8 +69,11 @@ class AIExtractor:
             ocr_text: Raw OCR markdown text
 
         Returns:
-            Extracted receipt data as dict matching OCRReceiptData schema
+            Extracted receipt data as dict with metadata about major store detection
         """
+        # Detect major stores (Woolworths/Coles)
+        detected_store, is_major_store = self._detect_major_store(ocr_text)
+
         prompt = self._build_extraction_prompt(ocr_text)
 
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -56,7 +97,16 @@ class AIExtractor:
 
             result = response.json()
             extracted_json = result["choices"][0]["message"]["content"]
-            return json.loads(extracted_json)
+            extracted_data = json.loads(extracted_json)
+
+            # Override store name if we detected Woolworths/Coles
+            if is_major_store and detected_store:
+                extracted_data["store_name"] = detected_store
+                extracted_data["_major_store_detected"] = True  # Metadata flag
+            else:
+                extracted_data["_major_store_detected"] = False
+
+            return extracted_data
 
     def _build_extraction_prompt(self, ocr_text: str) -> str:
         """Build extraction prompt for AI."""
@@ -66,7 +116,7 @@ OCR Text:
 {ocr_text}
 
 Extract the following information in JSON format:
-- store_name: Store name from header
+- store_name: Store name from header (normalize "TOP RYDE", "Top Ryde" to "Woolworths", detect "Coles" variants)
 - store_location: Store branch or address (if visible)
 - date: Transaction date in YYYY-MM-DD format
 - time: Transaction time in HH:MM format (if visible)
@@ -78,23 +128,23 @@ Extract the following information in JSON format:
   - discount: Discount amount from separate column (0 if none)
   - sku: Product SKU/barcode if visible
   - category: Product category (e.g., "Produce", "Meat", "Dairy", "Bakery", "Pantry", "Frozen", "Beverage", "Household", "Other")
-
-Important:
-- For free promotional items (buy X get Y free), set price to 0.0
-- Preserve the item in the output even if price is 0.0
 - subtotal: Subtotal before tax (if shown)
 - tax: Tax amount (GST, VAT, sales tax)
 - discount_total: Total discount amount (if shown)
-- total: Final total amount
+- total: Final total amount (MOST IMPORTANT - must match receipt exactly)
 - payment_method: Payment method used (if visible)
 
-Important:
-1. For multi-line items, combine them into a single raw_name
-2. Extract units (kg, g, L, ml) separately from item names
-3. Price should be the final price customer pays
-4. Discount is a separate field (0 if no discount column)
-5. Preserve original language for item names (Korean, Chinese, etc.)
-6. Categorize each item based on the product name
+CRITICAL RULES:
+1. **TOTAL PRICE IS SACRED**: The total field MUST exactly match the receipt's TOTAL line. This is the most important value.
+2. **Discount Lines (D/C)**: Lines starting with "D/C - " are NOT separate items. Skip them entirely - they represent discounts already applied to item prices.
+3. **Individual item prices**: Do your best but understand they may have rounding differences or hidden adjustments. The TOTAL is what matters most.
+4. **Store Detection**:
+   - If you see "Woolworths" anywhere OR location names like "Top Ryde", "Ryde", "Auburn", store_name should be "Woolworths"
+   - If you see "Coles" anywhere, store_name should be "Coles"
+5. **Multi-line items**: Combine items spanning multiple lines into a single raw_name
+6. **Units**: Extract units (kg, g, L, ml) separately from item names
+7. **Language preservation**: Keep original language for item names (Korean, Chinese, etc.)
+8. **Free items**: For free promotional items, set price to 0.0 but include in items array
 
 Return ONLY valid JSON, no markdown formatting."""
 
@@ -109,7 +159,7 @@ Return ONLY valid JSON, no markdown formatting."""
             raw_ocr_text: Original OCR text
 
         Returns:
-            Receipt object
+            Receipt object with major_store_detected metadata
         """
         # Convert items
         items = [
@@ -150,7 +200,7 @@ Return ONLY valid JSON, no markdown formatting."""
             except (ValueError, TypeError):
                 return None
 
-        return Receipt(
+        receipt = Receipt(
             filename="",
             store=extracted_data.get("store_name", "Unknown Store"),
             datetime=dt,
@@ -163,3 +213,8 @@ Return ONLY valid JSON, no markdown formatting."""
             payment_method=extracted_data.get("payment_method") or None,
             verified=False,
         )
+
+        # Store major store detection metadata (not persisted)
+        receipt._major_store_detected = extracted_data.get("_major_store_detected", False)
+
+        return receipt
