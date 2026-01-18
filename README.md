@@ -24,35 +24,49 @@ A Discord bot for processing grocery receipts, identifying items using AI, and t
 
 ### Installation
 
-1. Clone the repository:
+**Option 1: Interactive Installation (Recommended)**
+
+Run the interactive installation script that will guide you through the entire setup:
+
+```bash
+./install.sh
+```
+
+The script will:
+- Check Python installation
+- Set up virtual environment
+- Install dependencies
+- Prompt for API keys
+- Create `.env` configuration
+- Set up data directories
+- Test configuration
+
+**Option 2: Manual Installation**
+
+For manual installation steps, see [docs/INSTALLATION.md](docs/INSTALLATION.md)
+
+Quick manual setup:
+
+1. Clone and enter the repository:
    ```bash
-   git clone https://github.com/yourusername/receipt-bot.git
-   cd receipt-bot
+   git clone https://github.com/minhtran1309/Discord-Receipt-Bot-System.git
+   cd Discord-Receipt-Bot-System
    ```
 
-2. Create virtual environment:
+2. Create virtual environment and install dependencies:
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```bash
+   python3 -m venv discord_env
+   source discord_env/bin/activate
    pip install -r requirements.txt
    ```
 
-4. Configure environment:
+3. Configure environment:
    ```bash
    cp .env.example .env
    # Edit .env with your API keys
    ```
 
-5. Set up Google Sheets credentials:
-   - Create a service account in Google Cloud Console
-   - Download the JSON credentials file as `credentials.json`
-   - Share your target spreadsheet with the service account email
-
-6. Run the bot:
+4. Set up Google Sheets credentials and run:
    ```bash
    python -m bot.main
    ```
@@ -252,11 +266,3 @@ sudo systemctl restart discord-bot-dev.service
 ## License
 
 MIT License - See LICENSE file for details.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
