@@ -137,3 +137,70 @@ class Storage:
         cache_file = self.ocr_cache_dir / f"{filename}_ocr.txt"
         with open(cache_file, "w", encoding="utf-8") as f:
             f.write(ocr_text)
+
+    def load_ocr_result(self, filename: str) -> Optional[str]:
+        """Load OCR result from cache directory.
+
+        Args:
+            filename: Receipt filename without extension (e.g., '2024-01-15_1430_walmart')
+
+        Returns:
+            OCR text if found, None otherwise
+        """
+        cache_file = self.ocr_cache_dir / f"{filename}_ocr.txt"
+
+        if cache_file.exists():
+            with open(cache_file, "r", encoding="utf-8") as f:
+                return f.read()
+        return None
+
+    def get_latest_ocr_cache(self) -> Optional[tuple[str, str]]:
+        """Get the most recently modified OCR cache file.
+
+        Returns:
+            Tuple of (filename_without_ext, ocr_text) if found, None otherwise
+        """
+        cache_files = list(self.ocr_cache_dir.glob("*_ocr.txt"))
+
+        if not cache_files:
+            return None
+
+        # Sort by modification time, newest first
+        latest_file = max(cache_files, key=lambda f: f.stat().st_mtime)
+        filename = latest_file.stem.replace("_ocr", "")
+
+        with open(latest_file, "r", encoding="utf-8") as f:
+            ocr_text = f.read()
+
+        return (filename, ocr_text)
+
+    def rename_ocr_cache(self, old_filename: str, new_filename: str) -> bool:
+        """Rename an OCR cache file.
+
+        Args:
+            old_filename: Old filename without extension (e.g., 'TEMP_1234567890')
+            new_filename: New filename without extension (e.g., '2024-01-15_1430_walmart')
+
+        Returns:
+            True if successful, False otherwise
+        """
+        old_cache_file = self.ocr_cache_dir / f"{old_filename}_ocr.txt"
+        new_cache_file = self.ocr_cache_dir / f"{new_filename}_ocr.txt"
+
+        if old_cache_file.exists():
+            old_cache_file.rename(new_cache_file)
+            return True
+        return False
+
+    def list_ocr_caches(self) -> list[str]:
+        """List all OCR cache filenames (without extensions).
+
+        Returns:
+            List of cache filenames sorted by modification time (newest first)
+        """
+        cache_files = sorted(
+            self.ocr_cache_dir.glob("*_ocr.txt"),
+            key=lambda f: f.stat().st_mtime,
+            reverse=True
+        )
+        return [f.stem.replace("_ocr", "") for f in cache_files]

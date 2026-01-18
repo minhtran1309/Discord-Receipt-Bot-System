@@ -1,6 +1,7 @@
 """Receipt processing cog - handles /receipt commands."""
 
 import re
+import time
 from datetime import datetime
 
 import discord
@@ -122,17 +123,20 @@ class ReceiptCog(commands.Cog):
                 fallback_model=self.settings.fallback_ocr_model,
             )
 
+            # Save OCR to temporary cache immediately
+            temp_cache_filename = f"TEMP_{int(time.time())}"
+            self.storage.save_ocr_result(temp_cache_filename, ocr_text)
+
             # Step 3: AI Extraction
             await interaction.followup.send("🤖 Extracting structured data...")
             extracted_data = await self.ai_extractor.extract_receipt_data(ocr_text)
             parsed = self.ai_extractor.convert_to_receipt(extracted_data, ocr_text)
 
-            # Save OCR result to cache immediately (before further processing)
-            # Generate filename to match what save_receipt will create
+            # Rename cache to final filename
             dt = parsed.datetime
             store_name = parsed.store.lower().replace(" ", "_")
-            cache_filename = f"{dt.strftime('%Y-%m-%d_%H%M')}_{store_name}"
-            self.storage.save_ocr_result(cache_filename, ocr_text)
+            final_cache_filename = f"{dt.strftime('%Y-%m-%d_%H%M')}_{store_name}"
+            self.storage.rename_ocr_cache(temp_cache_filename, final_cache_filename)
 
             # Show major store detection message
             if hasattr(parsed, '_major_store_detected') and parsed._major_store_detected:
@@ -211,7 +215,165 @@ class ReceiptCog(commands.Cog):
             await interaction.followup.send(embed=embed)
 
         except Exception as e:
-            await interaction.followup.send(f"❌ Error processing receipt: {e}")
+            # Try to find the cache file that was saved
+            latest_cache = self.storage.get_latest_ocr_cache()
+
+            error_msg = f"❌ Error processing receipt: {e}\n\n"
+
+            if latest_cache:
+                cache_filename, _ = latest_cache
+                error_msg += (
+                    f"💡 **OCR was successful!** Your receipt text is cached.\n"
+                    f"Try reprocessing without re-uploading:\n"
+                    f"`/receipt reprocess cache_filename:{cache_filename}`\n\n"
+                    f"Or reprocess the latest cache automatically:\n"
+                    f"`/receipt reprocess`"
+                )
+            else:
+                error_msg += (
+                    f"💡 **Tip**: OCR may not have completed. Try uploading again:\n"
+                    f"`/receipt process`"
+                )
+
+            await interaction.followup.send(error_msg)
+
+    @receipt_group.command(
+        name="reprocess",
+        description="Reprocess last receipt from OCR cache without re-uploading image"
+    )
+    async def reprocess(
+        self,
+        interaction: discord.Interaction,
+        cache_filename: str = None
+    ):
+        """Reprocess a receipt from OCR cache.
+
+        Args:
+            cache_filename: Optional cache filename (e.g., '2024-01-15_1430_walmart').
+                           If not provided, uses most recent cache.
+        """
+        await interaction.response.defer()
+
+        try:
+            # Step 1: Load OCR from cache
+            if cache_filename:
+                ocr_text = self.storage.load_ocr_result(cache_filename)
+                if not ocr_text:
+                    await interaction.followup.send(
+                        f"❌ OCR cache not found: `{cache_filename}_ocr.txt`"
+                    )
+                    return
+            else:
+                # Use latest cache
+                cache_result = self.storage.get_latest_ocr_cache()
+                if not cache_result:
+                    await interaction.followup.send(
+                        "❌ No OCR cache found. Please upload a receipt first with `/receipt process`."
+                    )
+                    return
+                cache_filename, ocr_text = cache_result
+
+            await interaction.followup.send(
+                f"♻️ Reprocessing from cache: `{cache_filename}_ocr.txt`"
+            )
+
+            # Step 2: AI Extraction (prioritize total price & store)
+            await interaction.followup.send("🤖 Extracting structured data...")
+            extracted_data = await self.ai_extractor.extract_receipt_data(ocr_text)
+            parsed = self.ai_extractor.convert_to_receipt(extracted_data, ocr_text)
+
+            # Show major store detection message
+            if hasattr(parsed, '_major_store_detected') and parsed._major_store_detected:
+                await interaction.followup.send(
+                    f"🏪 **{parsed.store} receipt detected!** Using specialized processing for accurate item extraction."
+                )
+
+            # Validate extracted data
+            validation_issues = self._validate_receipt(parsed)
+            if validation_issues:
+                issues_text = "\n".join(f"• {issue}" for issue in validation_issues)
+                await interaction.followup.send(
+                    f"⚠️ **Validation Issues:**\n{issues_text}"
+                )
+
+            # Step 3: Save receipt (overwrites if exists)
+            filename = self.storage.save_receipt(parsed)
+
+            # Update cache filename if different (store/datetime changed)
+            dt = parsed.datetime
+            store_name = parsed.store.lower().replace(" ", "_")
+            new_cache_filename = f"{dt.strftime('%Y-%m-%d_%H%M')}_{store_name}"
+
+            if cache_filename != new_cache_filename:
+                self.storage.rename_ocr_cache(cache_filename, new_cache_filename)
+                await interaction.followup.send(
+                    f"📝 Cache renamed: `{cache_filename}_ocr.txt` → `{new_cache_filename}_ocr.txt`"
+                )
+
+            # Step 4: AUTO-GUESS ITEMS
+            await interaction.followup.send("🤖 Guessing item names...")
+
+            # Load latest corrections
+            corrections = self.storage.load_corrections()
+            self.guesser.update_corrections(corrections)
+
+            # Batch guess all items
+            guess_results = await self.guesser.guess_batch(parsed.items, parsed.store)
+
+            # Update items with guesses
+            needs_review = 0
+            for item, guess_result in zip(parsed.items, guess_results):
+                item.guessed_name = guess_result.product_name
+                item.confidence = guess_result.confidence
+
+                # Mark for review if confidence is low
+                if guess_result.confidence < self.settings.confidence_threshold:
+                    item.needs_review = True
+                    needs_review += 1
+
+            # Save updated receipt with guesses
+            self.storage.save_receipt(parsed)
+
+            # Save items to TSV file
+            self._save_items_to_tsv(parsed)
+
+            # Step 5: Send final result with TOON format
+            embed = discord.Embed(
+                title="♻️ Receipt Reprocessed & Items Guessed",
+                color=0x00FF00,
+            )
+
+            # Summary statistics
+            embed.add_field(name="Store", value=parsed.store, inline=True)
+            embed.add_field(name="Total Items", value=len(parsed.items), inline=True)
+            embed.add_field(name="Total", value=f"${parsed.total:.2f}", inline=True)
+            embed.add_field(name="Saved as", value=f"`{filename}`", inline=False)
+
+            # Items in TOON format
+            if parsed.items:
+                items_display = self._format_items_toon(parsed.items, max_items=15)
+                embed.add_field(
+                    name="📋 Items Details", value=items_display, inline=False
+                )
+
+            # Show needs review warning if applicable
+            if needs_review > 0:
+                embed.add_field(
+                    name="⚠️ Review Needed",
+                    value=(
+                        f"{needs_review} item(s) have low confidence and need your review. "
+                        f"Use `/receipt correct_name` to fix them."
+                    ),
+                    inline=False,
+                )
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send(
+                f"❌ Error reprocessing receipt: {e}\n\n"
+                f"💡 **Tip**: Try uploading the image again with `/receipt process`"
+            )
 
     @receipt_group.command(name="list", description="List all processed receipts")
     async def list_receipts(self, interaction: discord.Interaction):

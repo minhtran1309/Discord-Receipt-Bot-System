@@ -117,8 +117,10 @@ OCR Text:
 
 Extract the following information in JSON format:
 - store_name: Store name from header (normalize "TOP RYDE", "Top Ryde" to "Woolworths", detect "Coles" variants)
+  **CRITICAL**: Store name is used for file naming. Extract accurately.
 - store_location: Store branch or address (if visible)
 - date: Transaction date in YYYY-MM-DD format
+  **CRITICAL**: Date is used for file naming. Extract accurately.
 - time: Transaction time in HH:MM format (if visible)
 - items: Array of items, each with:
   - raw_name: Full item name (combine multi-line names)
@@ -136,15 +138,16 @@ Extract the following information in JSON format:
 
 CRITICAL RULES:
 1. **TOTAL PRICE IS SACRED**: The total field MUST exactly match the receipt's TOTAL line. This is the most important value.
-2. **Discount Lines (D/C)**: Lines starting with "D/C - " are NOT separate items. Skip them entirely - they represent discounts already applied to item prices.
-3. **Individual item prices**: Do your best but understand they may have rounding differences or hidden adjustments. The TOTAL is what matters most.
-4. **Store Detection**:
+2. **STORE NAME & DATE ARE CRITICAL**: These are used for file naming. Extract with 100% accuracy.
+3. **Discount Lines (D/C)**: Lines starting with "D/C - " are NOT separate items. Skip them entirely - they represent discounts already applied to item prices.
+4. **Individual item prices**: Do your best but understand they may have rounding differences or hidden adjustments. The TOTAL is what matters most.
+5. **Store Detection**:
    - If you see "Woolworths" anywhere OR location names like "Top Ryde", "Ryde", "Auburn", store_name should be "Woolworths"
    - If you see "Coles" anywhere, store_name should be "Coles"
-5. **Multi-line items**: Combine items spanning multiple lines into a single raw_name
-6. **Units**: Extract units (kg, g, L, ml) separately from item names
-7. **Language preservation**: Keep original language for item names (Korean, Chinese, etc.)
-8. **Free items**: For free promotional items, set price to 0.0 but include in items array
+6. **Multi-line items**: Combine items spanning multiple lines into a single raw_name
+7. **Units**: Extract units (kg, g, L, ml) separately from item names
+8. **Language preservation**: Keep original language for item names (Korean, Chinese, etc.)
+9. **Free items**: For free promotional items, set price to 0.0 but include in items array
 
 Return ONLY valid JSON, no markdown formatting."""
 
