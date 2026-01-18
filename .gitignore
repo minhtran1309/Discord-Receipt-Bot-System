@@ -48,6 +48,10 @@ data/receipts/*.HEIC
 data/receipts/*.heic
 data/items/*.tsv
 data/corrections.json
+data/ocr_cache/*.txt
+
+# Keep directory structure
+!.gitkeep
 
 # Google credentials
 credentials.json
