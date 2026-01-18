@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+
 from bot.models import Receipt, ReceiptItem
 
 aldi_ocr_text = """ALDI STORES
@@ -47,6 +48,7 @@ AMOUNT $24.05
 TOTAL AUD $24.05
 AUTH 000000
 APPROVED 00"""
+
 
 def parse_receipt(ocr_text: str):
     """Parse OCR text into a Receipt object (basic implementation)."""
@@ -97,6 +99,7 @@ def parse_receipt(ocr_text: str):
         items=items,
         total=total,
     )
+
 
 # Test parsing
 print("Testing Aldi receipt parsing:")

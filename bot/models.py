@@ -1,9 +1,10 @@
 """Pydantic data models for the bot."""
 
+import uuid
 from datetime import datetime
 from typing import Optional
+
 from pydantic import BaseModel, Field
-import uuid
 
 
 class ReceiptItem(BaseModel):
@@ -11,12 +12,27 @@ class ReceiptItem(BaseModel):
 
     raw_name: str = Field(description="Full item name from receipt, can be multi-line")
     quantity: float = Field(default=1, gt=0, description="Item quantity")
-    unit: str = Field(default="ea", description="Unit of measurement (ea, kg, g, L, ml, etc.)")
-    price: float = Field(gt=0, description="Item price as shown on receipt (final price after any discount)")
-    discount: float = Field(default=0.0, description="Discount amount from separate discount column (0 if no discount)")
-    sku: Optional[str] = Field(default=None, description="Product SKU/barcode if visible")
-    category: str = Field(default="Other", description="Product category (Produce, Meat, Dairy, Bakery, Pantry, Frozen, Beverage, Household, Other)")
-    language: Optional[str] = Field(default="en", description="Detected language of item name")
+    unit: str = Field(
+        default="ea", description="Unit of measurement (ea, kg, g, L, ml, etc.)"
+    )
+    price: float = Field(
+        ge=0,
+        description="Item price as shown on receipt (final price after any discount, 0 for free items)",
+    )
+    discount: float = Field(
+        default=0.0,
+        description="Discount amount from separate discount column (0 if no discount)",
+    )
+    sku: Optional[str] = Field(
+        default=None, description="Product SKU/barcode if visible"
+    )
+    category: str = Field(
+        default="Other",
+        description="Product category (Produce, Meat, Dairy, Bakery, Pantry, Frozen, Beverage, Household, Other)",
+    )
+    language: Optional[str] = Field(
+        default="en", description="Detected language of item name"
+    )
 
     # AI guessing fields
     guessed_name: Optional[str] = None
@@ -39,14 +55,23 @@ class Receipt(BaseModel):
     datetime: datetime
     processed_at: datetime = Field(default_factory=datetime.now)
     verified: bool = False
-    synced_to_sheets: bool = Field(default=False, description="Whether this receipt has been synced to Google Sheets")
+    synced_to_sheets: bool = Field(
+        default=False,
+        description="Whether this receipt has been synced to Google Sheets",
+    )
     raw_ocr_text: str
     items: list[ReceiptItem]
     total: float
     subtotal: Optional[float] = Field(default=None, description="Subtotal before tax")
-    tax: Optional[float] = Field(default=None, description="Tax amount (GST, VAT, sales tax)")
-    discount_total: Optional[float] = Field(default=None, description="Total discount amount across all items")
-    payment_method: Optional[str] = Field(default=None, description="Payment method (Card, Cash, EFT, etc.)")
+    tax: Optional[float] = Field(
+        default=None, description="Tax amount (GST, VAT, sales tax)"
+    )
+    discount_total: Optional[float] = Field(
+        default=None, description="Total discount amount across all items"
+    )
+    payment_method: Optional[str] = Field(
+        default=None, description="Payment method (Card, Cash, EFT, etc.)"
+    )
 
     class Config:
         json_encoders = {
@@ -66,7 +91,9 @@ class BudgetEntry(BaseModel):
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     date: datetime
-    amount: float = Field(gt=0, description="Amount spent on eating out or takeaway drink")
+    amount: float = Field(
+        gt=0, description="Amount spent on eating out or takeaway drink"
+    )
     description: str = Field(default="Eating out / Takeaway drink")
     month: str = Field(description="Month in YYYY-MM format")
     created_at: datetime = Field(default_factory=datetime.now)
@@ -85,5 +112,7 @@ class MonthlyBudget(BaseModel):
     spent: float = Field(default=0.0, description="Total spent this month")
     remaining: float = Field(default=100.0, description="Remaining budget")
     entries: list[BudgetEntry] = Field(default_factory=list)
-    overspent: bool = Field(default=False, description="Whether budget has been exceeded")
+    overspent: bool = Field(
+        default=False, description="Whether budget has been exceeded"
+    )
     surplus: float = Field(default=0.0, description="Positive surplus if under budget")

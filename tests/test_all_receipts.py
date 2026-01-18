@@ -2,11 +2,12 @@
 
 import asyncio
 import json
-import sys
-from pathlib import Path
-from datetime import datetime
-from dotenv import load_dotenv
 import os
+import sys
+from datetime import datetime
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -14,11 +15,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Load environment variables
 load_dotenv()
 
-from bot.services.ocr import OCRService, OCRReceiptData
 from bot.models import Receipt, ReceiptItem
+from bot.services.ocr import OCRReceiptData, OCRService
 
 
-async def process_receipt(ocr_service: OCRService, receipt_path: Path, output_dir: Path):
+async def process_receipt(
+    ocr_service: OCRService, receipt_path: Path, output_dir: Path
+):
     """Process a single receipt and save results.
 
     Args:
@@ -31,7 +34,7 @@ async def process_receipt(ocr_service: OCRService, receipt_path: Path, output_di
     print(f"{'='*80}")
 
     # Read image bytes
-    with open(receipt_path, 'rb') as f:
+    with open(receipt_path, "rb") as f:
         image_bytes = f.read()
 
     # Track results
@@ -45,15 +48,14 @@ async def process_receipt(ocr_service: OCRService, receipt_path: Path, output_di
         "error": None,
         "ocr_raw_text": "",
         "structured_data": None,
-        "validation_issues": []
+        "validation_issues": [],
     }
 
     try:
         # Process with structured extraction
         print("🔍 Running OCR with structured extraction...")
         raw_text, structured_data = await ocr_service.process_image(
-            image_bytes,
-            use_structured_extraction=True
+            image_bytes, use_structured_extraction=True
         )
 
         result["ocr_raw_text"] = raw_text
@@ -81,10 +83,10 @@ async def process_receipt(ocr_service: OCRService, receipt_path: Path, output_di
                         "unit": item.unit,
                         "price": item.price,
                         "discount": item.discount,
-                        "sku": item.sku
+                        "sku": item.sku,
                     }
                     for item in structured_data.items
-                ]
+                ],
             }
 
             # Display extracted data
@@ -106,15 +108,25 @@ async def process_receipt(ocr_service: OCRService, receipt_path: Path, output_di
 
             # Display items table
             print(f"\n📦 Items:")
-            print(f"  {'#':<3} {'Name':<40} {'Qty':<6} {'Unit':<6} {'Price':<8} {'Disc':<6}")
+            print(
+                f"  {'#':<3} {'Name':<40} {'Qty':<6} {'Unit':<6} {'Price':<8} {'Disc':<6}"
+            )
             print(f"  {'-'*3} {'-'*40} {'-'*6} {'-'*6} {'-'*8} {'-'*6}")
 
             for i, item in enumerate(structured_data.items, 1):
-                name = item.raw_name[:38] + ".." if len(item.raw_name) > 40 else item.raw_name
-                print(f"  {i:<3} {name:<40} {item.quantity:<6.1f} {item.unit:<6} ${item.price:<7.2f} ${item.discount:<5.2f}")
+                name = (
+                    item.raw_name[:38] + ".."
+                    if len(item.raw_name) > 40
+                    else item.raw_name
+                )
+                print(
+                    f"  {i:<3} {name:<40} {item.quantity:<6.1f} {item.unit:<6} ${item.price:<7.2f} ${item.discount:<5.2f}"
+                )
 
             # Validate data
-            items_sum = sum(item.price * item.quantity for item in structured_data.items)
+            items_sum = sum(
+                item.price * item.quantity for item in structured_data.items
+            )
             if abs(items_sum - structured_data.total) > 0.10:
                 issue = f"Items sum (${items_sum:.2f}) != total (${structured_data.total:.2f})"
                 result["validation_issues"].append(issue)
@@ -133,7 +145,7 @@ async def process_receipt(ocr_service: OCRService, receipt_path: Path, output_di
 
         # Save raw OCR text
         text_output_path = output_dir / f"{receipt_path.stem}_ocr.txt"
-        with open(text_output_path, 'w', encoding='utf-8') as f:
+        with open(text_output_path, "w", encoding="utf-8") as f:
             f.write(raw_text)
         print(f"\n💾 Saved raw OCR text to: {text_output_path.name}")
 
@@ -142,11 +154,12 @@ async def process_receipt(ocr_service: OCRService, receipt_path: Path, output_di
         result["success"] = False
         result["error"] = str(e)
         import traceback
+
         result["traceback"] = traceback.format_exc()
 
     # Save result JSON
     json_output_path = output_dir / f"{receipt_path.stem}_result.json"
-    with open(json_output_path, 'w', encoding='utf-8') as f:
+    with open(json_output_path, "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
     print(f"💾 Saved test result to: {json_output_path.name}")
 
@@ -155,9 +168,9 @@ async def process_receipt(ocr_service: OCRService, receipt_path: Path, output_di
 
 async def main():
     """Main test function to process all receipts."""
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("RECEIPT PROCESSING TEST - Structured Extraction")
-    print("="*80)
+    print("=" * 80)
 
     # Setup paths
     receipts_dir = Path("data/receipts")
@@ -171,13 +184,16 @@ async def main():
         return
 
     ocr_service = OCRService(
-        api_key=api_key,
-        model=os.getenv("MISTRAL_OCR_MODEL", "mistral-ocr-latest")
+        api_key=api_key, model=os.getenv("MISTRAL_OCR_MODEL", "mistral-ocr-latest")
     )
 
     # Find all receipt images
-    receipt_files = sorted(receipts_dir.glob("*.HEIC")) + sorted(receipts_dir.glob("*.heic"))
-    receipt_files += sorted(receipts_dir.glob("*.jpg")) + sorted(receipts_dir.glob("*.jpeg"))
+    receipt_files = sorted(receipts_dir.glob("*.HEIC")) + sorted(
+        receipts_dir.glob("*.heic")
+    )
+    receipt_files += sorted(receipts_dir.glob("*.jpg")) + sorted(
+        receipts_dir.glob("*.jpeg")
+    )
     receipt_files += sorted(receipts_dir.glob("*.png"))
 
     if not receipt_files:
@@ -238,17 +254,17 @@ async def main():
         "fallback_to_regex": fallback,
         "errors": errors,
         "validation_issues_count": issues_count,
-        "results": results
+        "results": results,
     }
 
-    with open(summary_path, 'w', encoding='utf-8') as f:
+    with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
 
     print(f"\n💾 Summary saved to: {summary_path}")
     print(f"💾 All outputs saved to: {output_dir}/")
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("✅ Test complete!")
-    print("="*80 + "\n")
+    print("=" * 80 + "\n")
 
 
 if __name__ == "__main__":

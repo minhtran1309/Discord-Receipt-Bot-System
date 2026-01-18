@@ -1,0 +1,135 @@
+name: Deploy to Production (GCP)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Manual trigger
+
+env:
+  GCP_PROJECT_ID: gcp-discord-receipt-bot
+  GCP_ZONE: australia-southeast1-a
+  GCP_INSTANCE: discord-bot-server
+  DEPLOY_PATH: /opt/discord-bot/app
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio black isort mypy
+
+      - name: Run linting
+        run: |
+          black --check bot/ tests/
+          isort --check bot/ tests/
+
+      - name: Run type checking
+        run: |
+          mypy bot/ --ignore-missing-imports
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --tb=short
+
+  deploy:
+    name: Deploy to GCP
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to GCP VM
+        run: |
+          cat > deploy.sh << 'DEPLOY_SCRIPT'
+          #!/bin/bash
+          set -e
+
+          echo "=== Starting deployment to production ==="
+          cd /opt/discord-bot/app
+
+          # Fetch latest code
+          git fetch origin main
+          git reset --hard origin/main
+
+          # Decode and install Google credentials
+          if [ -f /tmp/credentials-prod-base64.txt ]; then
+            echo "📦 Installing production Google credentials..."
+            mkdir -p /opt/discord-bot/app/credentials
+            base64 -d /tmp/credentials-prod-base64.txt > /opt/discord-bot/app/credentials/credentials.production.json
+            chmod 600 /opt/discord-bot/app/credentials/credentials.production.json
+            rm /tmp/credentials-prod-base64.txt
+            echo "✅ Google credentials installed"
+          fi
+
+          # Update conda environment
+          source /opt/miniconda/etc/profile.d/conda.sh
+          conda activate discord_env
+          conda env update -f environment.yml --prune --quiet
+          pip install -r requirements.txt --quiet
+
+          # Restart service
+          sudo systemctl restart discord-bot.service
+
+          # Wait and verify
+          sleep 5
+
+          if sudo systemctl is-active --quiet discord-bot.service; then
+              echo "✅ Production service is running!"
+          else
+              echo "❌ Production service failed to start!"
+              sudo journalctl -u discord-bot.service -n 30 --no-pager
+              exit 1
+          fi
+
+          echo "=== Production deployment completed! ==="
+          DEPLOY_SCRIPT
+
+          # Transfer encoded credentials to server
+          echo "${{ secrets.GOOGLE_CREDENTIALS_PROD }}" > /tmp/credentials-prod-base64.txt
+          gcloud compute scp /tmp/credentials-prod-base64.txt botuser@${{ env.GCP_INSTANCE }}:/tmp/ \
+            --zone=${{ env.GCP_ZONE }} --quiet
+          rm /tmp/credentials-prod-base64.txt
+
+          # Transfer and execute deployment script
+          gcloud compute scp deploy.sh botuser@${{ env.GCP_INSTANCE }}:/tmp/deploy.sh \
+            --zone=${{ env.GCP_ZONE }} --quiet
+
+          gcloud compute ssh botuser@${{ env.GCP_INSTANCE }} \
+            --zone=${{ env.GCP_ZONE }} \
+            --command="chmod +x /tmp/deploy.sh && /tmp/deploy.sh" \
+            --quiet
+
+      - name: Verify deployment
+        run: |
+          gcloud compute ssh botuser@${{ env.GCP_INSTANCE }} \
+            --zone=${{ env.GCP_ZONE }} \
+            --command="sudo systemctl status discord-bot.service --no-pager" \
+            --quiet
+
+      - name: Send notification
+        if: always()
+        run: |
+          echo "Deployment completed with status: ${{ job.status }}"

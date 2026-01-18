@@ -1,17 +1,20 @@
 """Receipt processing cog - handles /receipt commands."""
 
+import re
+import time
+from datetime import datetime
+
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import datetime
-from bot.services.ocr import OCRService
+
+from bot.budget_storage import BudgetStorage
+from bot.config import Settings
+from bot.models import Receipt, ReceiptItem
 from bot.services.ai_extractor import AIExtractor
 from bot.services.guesser import ItemGuesser
+from bot.services.ocr import OCRService
 from bot.storage import Storage
-from bot.budget_storage import BudgetStorage
-from bot.models import Receipt, ReceiptItem
-from bot.config import Settings
-import re
 
 
 class ReceiptCog(commands.Cog):
@@ -39,7 +42,69 @@ class ReceiptCog(commands.Cog):
         name="receipt", description="Receipt processing commands"
     )
 
-    @receipt_group.command(name="process", description="Upload and process a receipt image")
+    def _format_items_toon(self, items: list[ReceiptItem], max_items: int = 10) -> str:
+        """Format receipt items in TOON (readable list) format.
+
+        Args:
+            items: List of ReceiptItem objects
+            max_items: Maximum number of items to display (default: 10)
+
+        Returns:
+            Formatted string for Discord embed
+        """
+        if not items:
+            return "No items found"
+
+        lines = []
+
+        for idx, item in enumerate(items[:max_items], start=1):
+            # Confidence emoji
+            if item.confidence is not None:
+                if item.confidence >= 0.90:
+                    conf_emoji = "✅"
+                elif item.confidence >= 0.70:
+                    conf_emoji = "⚠️"
+                else:
+                    conf_emoji = "❌"
+                conf_str = f"{conf_emoji} ({item.confidence:.0%})"
+            else:
+                conf_str = "N/A"
+
+            # Item name (prefer confirmed_name, then guessed_name, fallback to raw_name)
+            display_name = item.confirmed_name or item.guessed_name or item.raw_name
+
+            # Build item line
+            lines.append(f"**{idx}. {display_name}** | {item.category}")
+
+            # Quantity and unit
+            if item.quantity != 1 or item.unit != "ea":
+                lines.append(f"   ├─ Qty: {item.quantity} {item.unit}")
+
+            # Price with discount
+            if item.discount > 0:
+                original_price = item.price + item.discount
+                lines.append(
+                    f"   ├─ Price: ~~${original_price:.2f}~~ ${item.price:.2f} (saved ${item.discount:.2f})"
+                )
+            else:
+                lines.append(f"   ├─ Price: ${item.price:.2f}")
+
+            # Confidence score
+            lines.append(f"   └─ Confidence: {conf_str}")
+
+            # Add spacing between items
+            if idx < min(len(items), max_items):
+                lines.append("")
+
+        # Add "more items" indicator
+        if len(items) > max_items:
+            lines.append(f"_... and {len(items) - max_items} more items_")
+
+        return "\n".join(lines)
+
+    @receipt_group.command(
+        name="process", description="Upload and process a receipt image"
+    )
     async def process(
         self, interaction: discord.Interaction, image: discord.Attachment
     ):
@@ -52,18 +117,40 @@ class ReceiptCog(commands.Cog):
 
             # Step 2: OCR
             await interaction.followup.send("🔍 Processing receipt with OCR...")
-            ocr_text = await self.ocr_service.process_image(image_bytes)
+            ocr_text = await self.ocr_service.process_image(
+                image_bytes,
+                openrouter_key=self.settings.openrouter_api_key,
+                fallback_model=self.settings.fallback_ocr_model,
+            )
+
+            # Save OCR to temporary cache immediately
+            temp_cache_filename = f"TEMP_{int(time.time())}"
+            self.storage.save_ocr_result(temp_cache_filename, ocr_text)
 
             # Step 3: AI Extraction
             await interaction.followup.send("🤖 Extracting structured data...")
             extracted_data = await self.ai_extractor.extract_receipt_data(ocr_text)
             parsed = self.ai_extractor.convert_to_receipt(extracted_data, ocr_text)
 
+            # Rename cache to final filename
+            dt = parsed.datetime
+            store_name = parsed.store.lower().replace(" ", "_")
+            final_cache_filename = f"{dt.strftime('%Y-%m-%d_%H%M')}_{store_name}"
+            self.storage.rename_ocr_cache(temp_cache_filename, final_cache_filename)
+
+            # Show major store detection message
+            if hasattr(parsed, '_major_store_detected') and parsed._major_store_detected:
+                await interaction.followup.send(
+                    f"🏪 **{parsed.store} receipt detected!** Using specialized processing for accurate item extraction."
+                )
+
             # Validate extracted data
             validation_issues = self._validate_receipt(parsed)
             if validation_issues:
                 issues_text = "\n".join(f"• {issue}" for issue in validation_issues)
-                await interaction.followup.send(f"⚠️ **Validation Issues:**\n{issues_text}")
+                await interaction.followup.send(
+                    f"⚠️ **Validation Issues:**\n{issues_text}"
+                )
 
             # Step 4: Save receipt (unguessed)
             filename = self.storage.save_receipt(parsed)
@@ -95,57 +182,198 @@ class ReceiptCog(commands.Cog):
             # Save items to TSV file
             self._save_items_to_tsv(parsed)
 
-            # Step 6: Send final result with table
+            # Step 6: Send final result with TOON format
             embed = discord.Embed(
                 title="✅ Receipt Processed & Items Guessed",
                 color=0x00FF00,
             )
+
+            # Summary statistics
             embed.add_field(name="Store", value=parsed.store, inline=True)
+            embed.add_field(name="Total Items", value=len(parsed.items), inline=True)
             embed.add_field(name="Total", value=f"${parsed.total:.2f}", inline=True)
-            embed.add_field(name="Items", value=len(parsed.items), inline=True)
-            embed.add_field(name="Needs Review", value=needs_review, inline=True)
             embed.add_field(name="Saved as", value=f"`{filename}`", inline=False)
 
-            # Build table-like display of items
+            # Items in TOON format
             if parsed.items:
-                # Create table header
-                table_lines = [
-                    "```",
-                    f"{'Raw Name':<20} {'Guessed Name':<25} {'Conf':<6} {'Review':<6}",
-                    "-" * 63
-                ]
-
-                # Add each item as a row
-                for item in parsed.items[:10]:  # Limit to first 10 items
-                    raw = (item.raw_name[:18] + "..") if len(item.raw_name) > 20 else item.raw_name
-                    guessed = (item.guessed_name[:23] + "..") if item.guessed_name and len(item.guessed_name) > 25 else (item.guessed_name or "N/A")
-                    conf = f"{item.confidence:.2f}" if item.confidence is not None else "N/A"
-                    review = "⚠️" if item.needs_review else "✓"
-
-                    table_lines.append(f"{raw:<20} {guessed:<25} {conf:<6} {review:<6}")
-
-                if len(parsed.items) > 10:
-                    table_lines.append(f"\n... and {len(parsed.items) - 10} more items")
-
-                table_lines.append("```")
-
+                items_display = self._format_items_toon(parsed.items, max_items=15)
                 embed.add_field(
-                    name="Items Details",
-                    value="\n".join(table_lines),
-                    inline=False
+                    name="📋 Items Details", value=items_display, inline=False
                 )
 
+            # Show needs review warning if applicable
             if needs_review > 0:
                 embed.add_field(
                     name="⚠️ Low Confidence Items",
-                    value=f"{needs_review} items need review. Use `/guess correct` to fix.",
-                    inline=False
+                    value=(
+                        f"{needs_review} items need review.\n"
+                        f"Use `/receipt correct_name <item_number> <new_name>` to fix."
+                    ),
+                    inline=False,
                 )
 
             await interaction.followup.send(embed=embed)
 
         except Exception as e:
-            await interaction.followup.send(f"❌ Error processing receipt: {e}")
+            # Try to find the cache file that was saved
+            latest_cache = self.storage.get_latest_ocr_cache()
+
+            error_msg = f"❌ Error processing receipt: {e}\n\n"
+
+            if latest_cache:
+                cache_filename, _ = latest_cache
+                error_msg += (
+                    f"💡 **OCR was successful!** Your receipt text is cached.\n"
+                    f"Try reprocessing without re-uploading:\n"
+                    f"`/receipt reprocess cache_filename:{cache_filename}`\n\n"
+                    f"Or reprocess the latest cache automatically:\n"
+                    f"`/receipt reprocess`"
+                )
+            else:
+                error_msg += (
+                    f"💡 **Tip**: OCR may not have completed. Try uploading again:\n"
+                    f"`/receipt process`"
+                )
+
+            await interaction.followup.send(error_msg)
+
+    @receipt_group.command(
+        name="reprocess",
+        description="Reprocess last receipt from OCR cache without re-uploading image"
+    )
+    async def reprocess(
+        self,
+        interaction: discord.Interaction,
+        cache_filename: str = None
+    ):
+        """Reprocess a receipt from OCR cache.
+
+        Args:
+            cache_filename: Optional cache filename (e.g., '2024-01-15_1430_walmart').
+                           If not provided, uses most recent cache.
+        """
+        await interaction.response.defer()
+
+        try:
+            # Step 1: Load OCR from cache
+            if cache_filename:
+                ocr_text = self.storage.load_ocr_result(cache_filename)
+                if not ocr_text:
+                    await interaction.followup.send(
+                        f"❌ OCR cache not found: `{cache_filename}_ocr.txt`"
+                    )
+                    return
+            else:
+                # Use latest cache
+                cache_result = self.storage.get_latest_ocr_cache()
+                if not cache_result:
+                    await interaction.followup.send(
+                        "❌ No OCR cache found. Please upload a receipt first with `/receipt process`."
+                    )
+                    return
+                cache_filename, ocr_text = cache_result
+
+            await interaction.followup.send(
+                f"♻️ Reprocessing from cache: `{cache_filename}_ocr.txt`"
+            )
+
+            # Step 2: AI Extraction (prioritize total price & store)
+            await interaction.followup.send("🤖 Extracting structured data...")
+            extracted_data = await self.ai_extractor.extract_receipt_data(ocr_text)
+            parsed = self.ai_extractor.convert_to_receipt(extracted_data, ocr_text)
+
+            # Show major store detection message
+            if hasattr(parsed, '_major_store_detected') and parsed._major_store_detected:
+                await interaction.followup.send(
+                    f"🏪 **{parsed.store} receipt detected!** Using specialized processing for accurate item extraction."
+                )
+
+            # Validate extracted data
+            validation_issues = self._validate_receipt(parsed)
+            if validation_issues:
+                issues_text = "\n".join(f"• {issue}" for issue in validation_issues)
+                await interaction.followup.send(
+                    f"⚠️ **Validation Issues:**\n{issues_text}"
+                )
+
+            # Step 3: Save receipt (overwrites if exists)
+            filename = self.storage.save_receipt(parsed)
+
+            # Update cache filename if different (store/datetime changed)
+            dt = parsed.datetime
+            store_name = parsed.store.lower().replace(" ", "_")
+            new_cache_filename = f"{dt.strftime('%Y-%m-%d_%H%M')}_{store_name}"
+
+            if cache_filename != new_cache_filename:
+                self.storage.rename_ocr_cache(cache_filename, new_cache_filename)
+                await interaction.followup.send(
+                    f"📝 Cache renamed: `{cache_filename}_ocr.txt` → `{new_cache_filename}_ocr.txt`"
+                )
+
+            # Step 4: AUTO-GUESS ITEMS
+            await interaction.followup.send("🤖 Guessing item names...")
+
+            # Load latest corrections
+            corrections = self.storage.load_corrections()
+            self.guesser.update_corrections(corrections)
+
+            # Batch guess all items
+            guess_results = await self.guesser.guess_batch(parsed.items, parsed.store)
+
+            # Update items with guesses
+            needs_review = 0
+            for item, guess_result in zip(parsed.items, guess_results):
+                item.guessed_name = guess_result.product_name
+                item.confidence = guess_result.confidence
+
+                # Mark for review if confidence is low
+                if guess_result.confidence < self.settings.confidence_threshold:
+                    item.needs_review = True
+                    needs_review += 1
+
+            # Save updated receipt with guesses
+            self.storage.save_receipt(parsed)
+
+            # Save items to TSV file
+            self._save_items_to_tsv(parsed)
+
+            # Step 5: Send final result with TOON format
+            embed = discord.Embed(
+                title="♻️ Receipt Reprocessed & Items Guessed",
+                color=0x00FF00,
+            )
+
+            # Summary statistics
+            embed.add_field(name="Store", value=parsed.store, inline=True)
+            embed.add_field(name="Total Items", value=len(parsed.items), inline=True)
+            embed.add_field(name="Total", value=f"${parsed.total:.2f}", inline=True)
+            embed.add_field(name="Saved as", value=f"`{filename}`", inline=False)
+
+            # Items in TOON format
+            if parsed.items:
+                items_display = self._format_items_toon(parsed.items, max_items=15)
+                embed.add_field(
+                    name="📋 Items Details", value=items_display, inline=False
+                )
+
+            # Show needs review warning if applicable
+            if needs_review > 0:
+                embed.add_field(
+                    name="⚠️ Review Needed",
+                    value=(
+                        f"{needs_review} item(s) have low confidence and need your review. "
+                        f"Use `/receipt correct_name` to fix them."
+                    ),
+                    inline=False,
+                )
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send(
+                f"❌ Error reprocessing receipt: {e}\n\n"
+                f"💡 **Tip**: Try uploading the image again with `/receipt process`"
+            )
 
     @receipt_group.command(name="list", description="List all processed receipts")
     async def list_receipts(self, interaction: discord.Interaction):
@@ -167,7 +395,7 @@ class ReceiptCog(commands.Cog):
 
     @receipt_group.command(name="show", description="Display a specific receipt")
     async def show(self, interaction: discord.Interaction, filename: str):
-        """Show details of a specific receipt."""
+        """Show details of a specific receipt with TOON format."""
         receipt = self.storage.load_receipt(filename)
 
         if not receipt:
@@ -175,20 +403,38 @@ class ReceiptCog(commands.Cog):
             return
 
         embed = discord.Embed(
-            title=f"Receipt: {receipt.store}",
-            description=f"Date: {receipt.datetime.strftime('%Y-%m-%d %H:%M')}",
+            title=f"🧾 Receipt: {receipt.store}",
+            description=f"**Date**: {receipt.datetime.strftime('%Y-%m-%d %H:%M')}",
             color=0x00FF00 if receipt.verified else 0xFFFF00,
         )
 
-        # Add items
-        items_text = "\n".join(
-            f"• {item.raw_name}: ${item.price:.2f}" for item in receipt.items[:10]
-        )
-        embed.add_field(name="Items", value=items_text or "None", inline=False)
+        # Summary fields
+        embed.add_field(name="Total Items", value=len(receipt.items), inline=True)
         embed.add_field(name="Total", value=f"${receipt.total:.2f}", inline=True)
         embed.add_field(
-            name="Verified", value="✓" if receipt.verified else "✗", inline=True
+            name="Status",
+            value="✓ Verified" if receipt.verified else "⏳ Unverified",
+            inline=True,
         )
+
+        # Add items in TOON format
+        items_display = self._format_items_toon(receipt.items, max_items=10)
+        embed.add_field(name="📋 Items", value=items_display, inline=False)
+
+        # Show subtotal, tax, discount if available
+        details = []
+        if receipt.subtotal:
+            details.append(f"Subtotal: ${receipt.subtotal:.2f}")
+        if receipt.tax:
+            details.append(f"Tax: ${receipt.tax:.2f}")
+        if receipt.discount_total and receipt.discount_total > 0:
+            details.append(f"Discount: -${receipt.discount_total:.2f}")
+
+        if details:
+            embed.add_field(name="💵 Breakdown", value="\n".join(details), inline=False)
+
+        # Show filename at bottom
+        embed.set_footer(text=f"File: {filename}")
 
         await interaction.response.send_message(embed=embed)
 
@@ -232,7 +478,229 @@ class ReceiptCog(commands.Cog):
         else:
             await interaction.response.send_message("Receipt not found.")
 
-    @receipt_group.command(name="view_store", description="View store purchases by month or year")
+    @receipt_group.command(name="correct_name", description="Correct an item's name")
+    async def correct_name(
+        self,
+        interaction: discord.Interaction,
+        filename: str,
+        item_index: int,
+        new_name: str,
+    ):
+        """Correct an item's guessed name.
+
+        Args:
+            filename: Receipt filename
+            item_index: Item number from the list (1-based)
+            new_name: Corrected item name
+        """
+        await interaction.response.defer()
+
+        # Load receipt
+        receipt = self.storage.load_receipt(filename)
+        if not receipt:
+            await interaction.followup.send("❌ Receipt not found.")
+            return
+
+        # Validate item index
+        if item_index < 1 or item_index > len(receipt.items):
+            await interaction.followup.send(
+                f"❌ Invalid item index. Must be between 1 and {len(receipt.items)}."
+            )
+            return
+
+        # Get item (convert to 0-based index)
+        item = receipt.items[item_index - 1]
+        old_name = item.guessed_name or item.raw_name
+
+        # Update item
+        item.confirmed_name = new_name
+        item.confidence = 1.0  # User confirmed, so 100% confidence
+        item.needs_review = False
+
+        # Save correction to corrections.json for future use
+        self.storage.save_correction(item.raw_name, receipt.store, new_name)
+
+        # Update guesser's cache
+        key = f"{item.raw_name}|{receipt.store}"
+        self.guesser.corrections[key] = new_name
+
+        # Save updated receipt
+        self.storage.save_receipt(receipt)
+
+        # Send confirmation
+        embed = discord.Embed(title="✅ Name Corrected", color=0x00FF00)
+        embed.add_field(
+            name="Item", value=f"**{item_index}. {item.raw_name}**", inline=False
+        )
+        embed.add_field(name="Old Name", value=old_name, inline=True)
+        embed.add_field(name="New Name", value=new_name, inline=True)
+        embed.add_field(
+            name="Note",
+            value=f"Correction saved to `corrections.json` for future receipts from {receipt.store}",
+            inline=False,
+        )
+
+        await interaction.followup.send(embed=embed)
+
+    @receipt_group.command(name="correct_price", description="Correct an item's price or total price (use -1)")
+    async def correct_price(
+        self,
+        interaction: discord.Interaction,
+        filename: str,
+        item_index: int,
+        new_price: float,
+    ):
+        """Correct an item's price or receipt total.
+
+        Args:
+            filename: Receipt filename
+            item_index: Item number from the list (1-based), or -1 to correct total price
+            new_price: Corrected price
+        """
+        await interaction.response.defer()
+
+        # Load receipt
+        receipt = self.storage.load_receipt(filename)
+        if not receipt:
+            await interaction.followup.send("❌ Receipt not found.")
+            return
+
+        # Validate price
+        if new_price <= 0:
+            await interaction.followup.send("❌ Price must be greater than 0.")
+            return
+
+        # Special case: -1 means correct total price
+        if item_index == -1:
+            old_total = receipt.total
+            receipt.total = new_price
+
+            # Save updated receipt
+            self.storage.save_receipt(receipt)
+
+            # Send confirmation
+            embed = discord.Embed(title="✅ Total Price Corrected", color=0x00FF00)
+            embed.add_field(name="Old Total", value=f"${old_total:.2f}", inline=True)
+            embed.add_field(name="New Total", value=f"${new_price:.2f}", inline=True)
+            embed.add_field(
+                name="Note",
+                value="Individual item prices remain unchanged. Total price overridden.",
+                inline=False,
+            )
+
+            await interaction.followup.send(embed=embed)
+            return
+
+        # Validate item index
+        if item_index < 1 or item_index > len(receipt.items):
+            await interaction.followup.send(
+                f"❌ Invalid item index. Must be between 1 and {len(receipt.items)}, or -1 for total price."
+            )
+            return
+
+        # Get item
+        item = receipt.items[item_index - 1]
+        old_price = item.price
+
+        # Update item price
+        item.price = new_price
+
+        # Recalculate receipt total
+        receipt.total = sum(i.price * i.quantity for i in receipt.items)
+
+        # Save updated receipt
+        self.storage.save_receipt(receipt)
+
+        # Send confirmation
+        embed = discord.Embed(title="✅ Item Price Corrected", color=0x00FF00)
+        embed.add_field(
+            name="Item",
+            value=f"**{item_index}. {item.guessed_name or item.raw_name}**",
+            inline=False,
+        )
+        embed.add_field(name="Old Price", value=f"${old_price:.2f}", inline=True)
+        embed.add_field(name="New Price", value=f"${new_price:.2f}", inline=True)
+        embed.add_field(name="New Total", value=f"${receipt.total:.2f}", inline=False)
+
+        await interaction.followup.send(embed=embed)
+
+    @receipt_group.command(
+        name="correct_category", description="Correct an item's category"
+    )
+    async def correct_category(
+        self,
+        interaction: discord.Interaction,
+        filename: str,
+        item_index: int,
+        new_category: str,
+    ):
+        """Correct an item's category.
+
+        Args:
+            filename: Receipt filename
+            item_index: Item number from the list (1-based)
+            new_category: New category (Produce, Meat, Dairy, Bakery, Pantry, Frozen, Beverage, Household, Other)
+        """
+        await interaction.response.defer()
+
+        # Valid categories
+        valid_categories = [
+            "Produce",
+            "Meat",
+            "Dairy",
+            "Bakery",
+            "Pantry",
+            "Frozen",
+            "Beverage",
+            "Household",
+            "Other",
+        ]
+
+        # Validate category
+        if new_category not in valid_categories:
+            await interaction.followup.send(
+                f"❌ Invalid category. Must be one of: {', '.join(valid_categories)}"
+            )
+            return
+
+        # Load receipt
+        receipt = self.storage.load_receipt(filename)
+        if not receipt:
+            await interaction.followup.send("❌ Receipt not found.")
+            return
+
+        # Validate item index
+        if item_index < 1 or item_index > len(receipt.items):
+            await interaction.followup.send(
+                f"❌ Invalid item index. Must be between 1 and {len(receipt.items)}."
+            )
+            return
+
+        # Get item
+        item = receipt.items[item_index - 1]
+        old_category = item.category
+
+        # Update category
+        item.category = new_category
+
+        # Save updated receipt
+        self.storage.save_receipt(receipt)
+
+        # Send confirmation
+        embed = discord.Embed(title="✅ Category Corrected", color=0x00FF00)
+        embed.add_field(
+            name="Item",
+            value=f"**{item_index}. {item.guessed_name or item.raw_name}**",
+            inline=False,
+        )
+        embed.add_field(name="Old Category", value=old_category, inline=True)
+        embed.add_field(name="New Category", value=new_category, inline=True)
+
+        await interaction.followup.send(embed=embed)
+
+    @receipt_group.command(
+        name="view_store", description="View store purchases by month or year"
+    )
     async def view_store(
         self,
         interaction: discord.Interaction,
@@ -252,9 +720,9 @@ class ReceiptCog(commands.Cog):
         """
         await interaction.response.defer()
 
-        from pathlib import Path
         import csv
         from datetime import datetime
+        from pathlib import Path
 
         try:
             # Get items directory
@@ -288,7 +756,9 @@ class ReceiptCog(commands.Cog):
                             if file_date.strftime("%Y-%m") != period:
                                 continue
                         else:
-                            await interaction.followup.send("❌ Invalid period format. Use YYYY-MM or YYYY")
+                            await interaction.followup.send(
+                                "❌ Invalid period format. Use YYYY-MM or YYYY"
+                            )
                             return
 
                     matching_files.append(tsv_file)
@@ -297,7 +767,9 @@ class ReceiptCog(commands.Cog):
 
             if not matching_files:
                 period_text = f" for {period}" if period else ""
-                await interaction.followup.send(f"❌ No purchases found for {store}{period_text}")
+                await interaction.followup.send(
+                    f"❌ No purchases found for {store}{period_text}"
+                )
                 return
 
             # Read and aggregate all items
@@ -333,29 +805,31 @@ class ReceiptCog(commands.Cog):
             # Create embed
             embed = discord.Embed(
                 title=f"📊 {store} Purchases{period_text}",
-                color=0x3498db,
-                timestamp=datetime.now()
+                color=0x3498DB,
+                timestamp=datetime.now(),
             )
 
             # Summary stats
             embed.add_field(
                 name="Summary",
                 value=f"**Total Items:** {len(all_items)}\n"
-                      f"**Total Spent:** ${total_spent:.2f}\n"
-                      f"**Receipts:** {len(matching_files)}",
-                inline=False
+                f"**Total Spent:** ${total_spent:.2f}\n"
+                f"**Receipts:** {len(matching_files)}",
+                inline=False,
             )
 
             # Category breakdown
             if category_totals:
                 category_text = "\n".join(
                     f"• {cat}: ${amt:.2f}"
-                    for cat, amt in sorted(category_totals.items(), key=lambda x: x[1], reverse=True)
+                    for cat, amt in sorted(
+                        category_totals.items(), key=lambda x: x[1], reverse=True
+                    )
                 )
                 embed.add_field(
                     name="💰 By Category",
                     value=category_text[:1024],  # Discord field limit
-                    inline=False
+                    inline=False,
                 )
 
             # Recent items (last 10)
@@ -368,7 +842,7 @@ class ReceiptCog(commands.Cog):
             embed.add_field(
                 name=f"🛒 Recent Items (Last {len(recent_items)})",
                 value=items_text[:1024] if items_text else "None",
-                inline=False
+                inline=False,
             )
 
             # Top items by spending
@@ -382,15 +856,14 @@ class ReceiptCog(commands.Cog):
                     pass
 
             if item_spending:
-                top_items = sorted(item_spending.items(), key=lambda x: x[1], reverse=True)[:5]
+                top_items = sorted(
+                    item_spending.items(), key=lambda x: x[1], reverse=True
+                )[:5]
                 top_text = "\n".join(
-                    f"• {name[:35]}: ${total:.2f}"
-                    for name, total in top_items
+                    f"• {name[:35]}: ${total:.2f}" for name, total in top_items
                 )
                 embed.add_field(
-                    name="🏆 Top Items by Spending",
-                    value=top_text[:1024],
-                    inline=False
+                    name="🏆 Top Items by Spending", value=top_text[:1024], inline=False
                 )
 
             embed.set_footer(text=f"Data from {len(matching_files)} receipt(s)")
@@ -413,7 +886,11 @@ class ReceiptCog(commands.Cog):
         for line in lines:
             line_lower = line.lower()
             # Match "total" but not "subtotal"
-            if line_lower.startswith("total") or " total " in line_lower or line_lower.endswith("total"):
+            if (
+                line_lower.startswith("total")
+                or " total " in line_lower
+                or line_lower.endswith("total")
+            ):
                 # Extract price from line (take the last match)
                 matches = re.findall(r"\$?(\d+\.\d{2})", line)
                 if matches:
@@ -422,9 +899,21 @@ class ReceiptCog(commands.Cog):
 
         # Keywords to skip (not actual items)
         skip_keywords = [
-            "total", "subtotal", "amount", "change", "rounding",
-            "gst", "tax", "card", "eft", "credit", "debit",
-            "sales", "payment", "net", "cash"
+            "total",
+            "subtotal",
+            "amount",
+            "change",
+            "rounding",
+            "gst",
+            "tax",
+            "card",
+            "eft",
+            "credit",
+            "debit",
+            "sales",
+            "payment",
+            "net",
+            "cash",
         ]
 
         # Basic item extraction (simplified)
@@ -445,19 +934,17 @@ class ReceiptCog(commands.Cog):
 
                 # Skip lines that look like dates (e.g., "30.12.25" or "02/01/2026")
                 # Check if line contains date patterns: DD.MM.YY or MM/DD/YYYY
-                if re.search(r'\d{1,2}[./]\d{1,2}[./]\d{2,4}', line):
+                if re.search(r"\d{1,2}[./]\d{1,2}[./]\d{2,4}", line):
                     continue
 
                 # Skip lines that look like transaction codes or reference numbers
                 # Lines starting with * or # followed by digits, or containing REF/TRANS/TERMINAL
-                if re.search(r'^[*#]\d+|REF|TRANS|TERMINAL', line, re.IGNORECASE):
+                if re.search(r"^[*#]\d+|REF|TRANS|TERMINAL", line, re.IGNORECASE):
                     continue
 
                 # Try to create ReceiptItem, skip if validation fails
                 try:
-                    items.append(
-                        ReceiptItem(raw_name=name.strip(), price=price_float)
-                    )
+                    items.append(ReceiptItem(raw_name=name.strip(), price=price_float))
                 except Exception:
                     # Skip invalid items silently
                     continue
@@ -516,13 +1003,17 @@ class ReceiptCog(commands.Cog):
         # Write items to TSV
         with open(tsv_path, "w", encoding="utf-8") as f:
             # Write header
-            f.write("raw_name\tguessed_name\tconfidence\tcategory\tunit\tprice\tdiscount\tsku\tstore\tdate\n")
+            f.write(
+                "raw_name\tguessed_name\tconfidence\tcategory\tunit\tprice\tdiscount\tsku\tstore\tdate\n"
+            )
 
             # Write each item
             for item in receipt.items:
                 raw_name = item.raw_name or ""
                 guessed_name = item.guessed_name or ""
-                confidence = f"{item.confidence:.4f}" if item.confidence is not None else ""
+                confidence = (
+                    f"{item.confidence:.4f}" if item.confidence is not None else ""
+                )
                 category = item.category or "Other"
                 unit = item.unit or "ea"
                 price = f"{item.price:.2f}"
@@ -531,7 +1022,9 @@ class ReceiptCog(commands.Cog):
                 store = receipt.store
                 date = receipt.datetime.strftime("%Y-%m-%d")
 
-                f.write(f"{raw_name}\t{guessed_name}\t{confidence}\t{category}\t{unit}\t{price}\t{discount}\t{sku}\t{store}\t{date}\n")
+                f.write(
+                    f"{raw_name}\t{guessed_name}\t{confidence}\t{category}\t{unit}\t{price}\t{discount}\t{sku}\t{store}\t{date}\n"
+                )
 
 
 async def setup(bot: commands.Bot):

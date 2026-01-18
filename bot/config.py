@@ -1,7 +1,8 @@
 """Configuration management for the Discord Receipt Bot."""
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     # Mistral OCR
     mistral_api_key: str
     mistral_ocr_model: str = "mistral-ocr-latest"
+    fallback_ocr_model: str = "qwen/qwen3-vl-30b-a3b-instruct"
 
     # OpenRouter (for AI extraction and guessing)
     openrouter_api_key: str
