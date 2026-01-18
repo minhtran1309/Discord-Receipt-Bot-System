@@ -28,7 +28,7 @@ class ClerkCog(commands.Cog):
         name="sync", description="Sync verified receipts to Google Sheets"
     )
     async def sync(self, interaction: discord.Interaction):
-        """Sync verified receipts to Google Sheets."""
+        """Sync verified receipts to Google Sheets with monthly aggregation."""
         await interaction.response.defer()
 
         try:
@@ -70,8 +70,17 @@ class ClerkCog(commands.Cog):
 
             print(f"[Clerk Sync] Syncing {len(receipts)} verified receipts...")
 
-            # Sync to sheets
+            # Step 1: Sync individual items to Sheet1 (existing behavior)
             count, synced_filenames = self.sheets.sync_multiple(receipts)
+            print(f"[Clerk Sync] Synced {count} receipts to Sheet1")
+
+            # Step 2: Sync receipt totals to receipt_total sheet (NEW)
+            month_cell_refs = self.sheets.sync_receipt_totals(receipts)
+            print(f"[Clerk Sync] Synced receipt totals to receipt_total sheet")
+
+            # Step 3: Update monthly formulas in total_cost_monthly (NEW)
+            self.sheets.update_shopping_expenses_formulas(month_cell_refs)
+            print(f"[Clerk Sync] Updated shopping_expenses formulas")
 
             # Mark receipts as synced
             for filename in synced_filenames:
@@ -101,7 +110,12 @@ class ClerkCog(commands.Cog):
             )
 
             if count > 0:
-                embed.description = "New data has been added to Google Sheets."
+                embed.description = (
+                    "New data has been added to Google Sheets:\n"
+                    "• Sheet1: Individual items\n"
+                    "• receipt_total: Receipt totals\n"
+                    "• total_cost_monthly: Updated formulas"
+                )
             else:
                 embed.description = "No new data to sync."
 
@@ -518,6 +532,202 @@ class ClerkCog(commands.Cog):
 
         except Exception as e:
             await interaction.followup.send(f"❌ Error checking budget status: {e}")
+
+    @clerk_group.command(
+        name="personal",
+        description="Log personal expense without receipt"
+    )
+    async def personal(
+        self,
+        interaction: discord.Interaction,
+        amount: float,
+        description: str
+    ):
+        """Log a personal expense.
+
+        Args:
+            amount: Amount spent
+            description: Description of expense
+        """
+        await self._log_expense(interaction, "personal", amount, description)
+
+    @clerk_group.command(
+        name="utilities",
+        description="Log utilities expense without receipt"
+    )
+    async def utilities(
+        self,
+        interaction: discord.Interaction,
+        amount: float,
+        description: str
+    ):
+        """Log a utilities expense.
+
+        Args:
+            amount: Amount spent
+            description: Description of expense
+        """
+        await self._log_expense(interaction, "utilities", amount, description)
+
+    @clerk_group.command(
+        name="transport",
+        description="Log transport expense without receipt"
+    )
+    async def transport(
+        self,
+        interaction: discord.Interaction,
+        amount: float,
+        description: str
+    ):
+        """Log a transport expense.
+
+        Args:
+            amount: Amount spent
+            description: Description of expense
+        """
+        await self._log_expense(interaction, "transport", amount, description)
+
+    @clerk_group.command(
+        name="extraordinary",
+        description="Log extraordinary expense without receipt"
+    )
+    async def extraordinary(
+        self,
+        interaction: discord.Interaction,
+        amount: float,
+        description: str
+    ):
+        """Log an extraordinary expense.
+
+        Args:
+            amount: Amount spent
+            description: Description of expense
+        """
+        await self._log_expense(interaction, "extraordinary", amount, description)
+
+    async def _log_expense(
+        self,
+        interaction: discord.Interaction,
+        category: str,
+        amount: float,
+        description: str
+    ):
+        """Internal method to log an expense.
+
+        Args:
+            interaction: Discord interaction
+            category: Expense category (personal, utilities, transport, extraordinary)
+            amount: Amount spent
+            description: Expense description
+        """
+        await interaction.response.defer()
+
+        try:
+            # Validate amount
+            if amount <= 0:
+                await interaction.followup.send("❌ Amount must be greater than 0")
+                return
+
+            # Get current date and month
+            now = datetime.now()
+            month = now.strftime("%Y-%m")
+
+            # Get bot signature from config
+            bot_signature = self.bot.settings.bot_name if hasattr(self.bot, 'settings') else "Receipt Bot (Local)"
+
+            # Append directly to Google Sheets (no local storage)
+            try:
+                # Sheet name: just category name (e.g., "personal", "utilities")
+                # User created these sheets with structure: [Date, Time, Amount, Category, Month, submitted_by]
+                sheet_name = category
+
+                # Prepare row: [Date, Time, Amount, Category, Month, submitted_by]
+                row = [
+                    now.strftime("%Y-%m-%d"),  # Date
+                    now.strftime("%H:%M"),     # Time
+                    amount,                     # Amount
+                    category,                   # Category
+                    month,                      # Month
+                    bot_signature               # submitted_by
+                ]
+
+                # Append to sheet
+                self.sheets.append_row(sheet_name, row)
+                print(f"[Expense] Appended to Google Sheets: {sheet_name}")
+
+                # Rebuild formula from Google Sheets (source of truth)
+                # This reads all rows for the month and generates complete formula
+                new_formula = self.sheets.rebuild_formula_from_sheet(sheet_name, category, month, amount_column="C")
+                print(f"[Expense] Rebuilt formula for {category}/{month}: {new_formula}")
+
+                # Update total_cost_monthly with complete formula
+                if new_formula:
+                    worksheet = self.sheets.get_worksheet("total_cost_monthly")
+                    category_row = self.sheets.find_or_create_category_row("total_cost_monthly", category)
+                    month_col = self.sheets.find_or_create_month_column("total_cost_monthly", month)
+                    worksheet.update_cell(category_row, month_col, new_formula)
+                    print(f"[Expense] Updated total_cost_monthly formula for {category}/{month}")
+
+            except Exception as e:
+                print(f"[Expense] Error updating Google Sheets: {e}")
+                await interaction.followup.send(
+                    f"❌ Failed to sync to Google Sheets:\n```{e}```\n\n"
+                    f"Please ensure the '{category}' sheet exists with correct structure:\n"
+                    f"`[Date, Time, Amount, Category, Month, submitted_by]`"
+                )
+                return
+
+            # Calculate monthly total by reading from Google Sheets
+            try:
+                worksheet = self.sheets.get_worksheet(sheet_name)
+                all_records = worksheet.get_all_values()
+
+                monthly_total = 0.0
+                for row in all_records[1:]:  # Skip header
+                    if len(row) > 4 and row[4] == month:  # Column E (index 4) is Month
+                        try:
+                            monthly_total += float(row[2])  # Column C (index 2) is Amount
+                        except (ValueError, IndexError):
+                            continue
+
+            except Exception as e:
+                print(f"[Expense] Error calculating monthly total: {e}")
+                monthly_total = amount  # Fallback to just current amount
+
+            # Create response embed
+            embed = discord.Embed(
+                title=f"💰 {category.title()} Expense Logged",
+                color=0x00FF00,
+                timestamp=now
+            )
+
+            embed.add_field(
+                name="Amount",
+                value=f"${amount:.2f}",
+                inline=True
+            )
+            embed.add_field(
+                name="Description",
+                value=description,
+                inline=True
+            )
+            embed.add_field(
+                name=f"📊 {month} Total",
+                value=f"${monthly_total:.2f}",
+                inline=False
+            )
+
+            embed.description = f"✅ Expense logged and synced to Google Sheets"
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"[Expense] Error: {error_details}")
+            await interaction.followup.send(
+                f"❌ Error logging {category} expense: {e}"
+            )
 
 
 async def setup(bot: commands.Bot):
