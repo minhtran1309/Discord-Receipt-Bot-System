@@ -380,7 +380,7 @@ class ReceiptCog(commands.Cog):
 
         await interaction.followup.send(embed=embed)
 
-    @receipt_group.command(name="correct_price", description="Correct an item's price")
+    @receipt_group.command(name="correct_price", description="Correct an item's price or total price (use -1)")
     async def correct_price(
         self,
         interaction: discord.Interaction,
@@ -388,11 +388,11 @@ class ReceiptCog(commands.Cog):
         item_index: int,
         new_price: float,
     ):
-        """Correct an item's price.
+        """Correct an item's price or receipt total.
 
         Args:
             filename: Receipt filename
-            item_index: Item number from the list (1-based)
+            item_index: Item number from the list (1-based), or -1 to correct total price
             new_price: Corrected price
         """
         await interaction.response.defer()
@@ -403,16 +403,37 @@ class ReceiptCog(commands.Cog):
             await interaction.followup.send("❌ Receipt not found.")
             return
 
-        # Validate item index
-        if item_index < 1 or item_index > len(receipt.items):
-            await interaction.followup.send(
-                f"❌ Invalid item index. Must be between 1 and {len(receipt.items)}."
-            )
-            return
-
         # Validate price
         if new_price <= 0:
             await interaction.followup.send("❌ Price must be greater than 0.")
+            return
+
+        # Special case: -1 means correct total price
+        if item_index == -1:
+            old_total = receipt.total
+            receipt.total = new_price
+
+            # Save updated receipt
+            self.storage.save_receipt(receipt)
+
+            # Send confirmation
+            embed = discord.Embed(title="✅ Total Price Corrected", color=0x00FF00)
+            embed.add_field(name="Old Total", value=f"${old_total:.2f}", inline=True)
+            embed.add_field(name="New Total", value=f"${new_price:.2f}", inline=True)
+            embed.add_field(
+                name="Note",
+                value="Individual item prices remain unchanged. Total price overridden.",
+                inline=False,
+            )
+
+            await interaction.followup.send(embed=embed)
+            return
+
+        # Validate item index
+        if item_index < 1 or item_index > len(receipt.items):
+            await interaction.followup.send(
+                f"❌ Invalid item index. Must be between 1 and {len(receipt.items)}, or -1 for total price."
+            )
             return
 
         # Get item
@@ -429,7 +450,7 @@ class ReceiptCog(commands.Cog):
         self.storage.save_receipt(receipt)
 
         # Send confirmation
-        embed = discord.Embed(title="✅ Price Corrected", color=0x00FF00)
+        embed = discord.Embed(title="✅ Item Price Corrected", color=0x00FF00)
         embed.add_field(
             name="Item",
             value=f"**{item_index}. {item.guessed_name or item.raw_name}**",
