@@ -439,3 +439,164 @@ class SheetsService:
         for month, cell_refs in month_cell_refs.items():
             for cell_ref in cell_refs:
                 self.update_formula_cell("total_cost_monthly", "shopping_expenses", month, cell_ref)
+
+    def rebuild_all_formulas(self) -> dict[str, int]:
+        """Rebuild all formulas in total_cost_monthly by reading from all expense sheets.
+
+        Reads data from:
+        - receipt_total → Shopping_expenses
+        - extraordinaries → Extraordinary
+        - eat_out → Special_treats
+        - utilities → Utilities
+        - personal → Personal
+        - transport → Transport
+
+        Returns:
+            Dict with category names as keys and formula count as values
+        """
+        # Sheet-to-category mapping (sheet_name -> (row_name, amount_column))
+        sheet_mappings = {
+            "receipt_total": ("Shopping_expenses", "B"),  # (row_name, amount_column)
+            "extraordinaries": ("Extraordinary", "C"),
+            "eat_out": ("Special_treats", "C"),
+            "utilities": ("Utilities", "C"),
+            "personal": ("Personal", "C"),
+            "transport": ("Transport", "C"),
+        }
+
+        # Month name mapping (month_number -> column_name)
+        month_names = {
+            1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr",
+            5: "May", 6: "Jun", 7: "Jul", 8: "Aug",
+            9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"
+        }
+
+        stats = {}
+
+        for sheet_name, (category_name, amount_col) in sheet_mappings.items():
+            try:
+                worksheet = self.get_worksheet(sheet_name)
+                all_records = worksheet.get_all_values()
+
+                if not all_records or len(all_records) < 2:
+                    print(f"[RebuildFormulas] {sheet_name}: No data, skipping")
+                    stats[category_name] = 0
+                    continue
+
+                # Group rows by month name (Jan, Feb, Mar, etc.)
+                months_data = {}  # month_name -> list of row indices
+
+                if sheet_name == "receipt_total":
+                    # Extract month from filename (YYYY-MM-DD_HHMM_store)
+                    for row_idx, row in enumerate(all_records[1:], start=2):
+                        if len(row) < 2:
+                            continue
+                        filename = row[0]
+                        if filename and "_" in filename:
+                            date_part = filename.split("_")[0]
+                            if date_part and len(date_part) >= 7:
+                                # Extract month number from YYYY-MM format
+                                month_num = int(date_part[5:7])  # Extract MM
+                                month_name = month_names.get(month_num)
+                                if month_name:
+                                    if month_name not in months_data:
+                                        months_data[month_name] = []
+                                    months_data[month_name].append(row_idx)
+                else:
+                    # Extract month from Month column (index 4 for expense sheets)
+                    for row_idx, row in enumerate(all_records[1:], start=2):
+                        if len(row) > 4:
+                            month_value = row[4]  # Month column
+                            if month_value:
+                                # Check if it's YYYY-MM format
+                                if "-" in month_value and len(month_value) >= 7:
+                                    month_num = int(month_value[5:7])
+                                    month_name = month_names.get(month_num)
+                                elif month_value in month_names.values():
+                                    # Already in month name format (Jan, Feb, etc.)
+                                    month_name = month_value
+                                else:
+                                    continue
+
+                                if month_name:
+                                    if month_name not in months_data:
+                                        months_data[month_name] = []
+                                    months_data[month_name].append(row_idx)
+
+                # Build and update formulas for each month
+                formula_count = 0
+                for month_name, row_indices in months_data.items():
+                    # Build formula from row indices
+                    cell_refs = [f"{sheet_name}!{amount_col}{idx}" for idx in row_indices]
+                    formula = self.build_formula(cell_refs)
+
+                    if formula:
+                        # Update cell in total_cost_monthly
+                        total_sheet = self.get_worksheet("total_cost_monthly")
+
+                        # Find row by category name
+                        category_row = self._find_row_by_name(total_sheet, category_name)
+                        if not category_row:
+                            print(f"[RebuildFormulas] Warning: Category '{category_name}' not found in total_cost_monthly")
+                            continue
+
+                        # Find column by month name
+                        month_col = self._find_column_by_name(total_sheet, month_name)
+                        if not month_col:
+                            print(f"[RebuildFormulas] Warning: Month '{month_name}' not found in total_cost_monthly")
+                            continue
+
+                        # Update the cell
+                        total_sheet.update_cell(category_row, month_col, formula)
+                        formula_count += 1
+                        print(f"[RebuildFormulas] {category_name}/{month_name}: {len(row_indices)} entries → Row {category_row}, Col {month_col}")
+
+                stats[category_name] = formula_count
+
+            except Exception as e:
+                print(f"[RebuildFormulas] Error processing {sheet_name}: {e}")
+                import traceback
+                traceback.print_exc()
+                stats[category_name] = 0
+
+        return stats
+
+    def _find_row_by_name(self, worksheet, row_name: str) -> int | None:
+        """Find row number by matching the first column value.
+
+        Args:
+            worksheet: Worksheet object
+            row_name: Name to search for in first column
+
+        Returns:
+            Row number (1-indexed) or None if not found
+        """
+        try:
+            all_values = worksheet.col_values(1)
+            for idx, value in enumerate(all_values, start=1):
+                if value == row_name:
+                    return idx
+            return None
+        except Exception as e:
+            print(f"[FindRow] Error: {e}")
+            return None
+
+    def _find_column_by_name(self, worksheet, col_name: str) -> int | None:
+        """Find column number by matching the first row value.
+
+        Args:
+            worksheet: Worksheet object
+            col_name: Name to search for in first row
+
+        Returns:
+            Column number (1-indexed) or None if not found
+        """
+        try:
+            header_row = worksheet.row_values(1)
+            for idx, value in enumerate(header_row, start=1):
+                if value == col_name:
+                    return idx
+            return None
+        except Exception as e:
+            print(f"[FindColumn] Error: {e}")
+            return None
