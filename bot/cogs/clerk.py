@@ -76,9 +76,10 @@ class ClerkCog(commands.Cog):
             count, synced_filenames = self.sheets.sync_multiple(receipts)
             print(f"[Clerk Sync] Synced {count} receipts to Sheet1")
 
-            # Step 2: Sync receipt totals to receipt_total sheet (NEW)
-            month_cell_refs = self.sheets.sync_receipt_totals(receipts)
-            print(f"[Clerk Sync] Synced receipt totals to receipt_total sheet")
+            # Step 2: Sync receipt totals to receipt_total sheet
+            bot_signature = self.bot.settings.bot_name if hasattr(self.bot, 'settings') else "Receipt Bot (Local)"
+            month_cell_refs = self.sheets.sync_receipt_totals(receipts, bot_signature=bot_signature)
+            print(f"[Clerk Sync] Synced {len(receipts)} receipt totals to receipt_total sheet")
 
             # Step 3: Update monthly formulas in total_cost_monthly (NEW)
             self.sheets.update_shopping_expenses_formulas(month_cell_refs)
