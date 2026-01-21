@@ -75,7 +75,8 @@ class ClerkCog(commands.Cog):
             print(f"[Clerk Sync] Synced {count} receipts to Sheet1")
 
             # Step 2: Sync receipt totals to receipt_total sheet
-            self.sheets.sync_receipt_totals(receipts, bot_signature=self.settings.bot_name)
+            bot_signature = self.bot.settings.bot_name if hasattr(self.bot, 'settings') else "Receipt Bot (Local)"
+            month_cell_refs = self.sheets.sync_receipt_totals(receipts, bot_signature=bot_signature)
             print(f"[Clerk Sync] Synced {len(receipts)} receipt totals to receipt_total sheet")
 
             # REMOVED: Step 3 formula updates (moved to /clerk expenses2total command)
