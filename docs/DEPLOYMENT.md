@@ -501,11 +501,52 @@ The repository includes two workflow files:
    - Restarts `discord-bot.service`
 
 2. **`.github/workflows/deploy-development.yml`**
-   - Triggers on push to `develop`, `guess_feature`, `clerk_feature_dev` branches
+   - Triggers on push to **ANY branch except `main`** (uses `branches-ignore`)
+   - Triggers on pull requests targeting `main` (tests only, no deployment)
    - Runs tests (failures allowed for dev)
    - Decodes and installs `GOOGLE_CREDENTIALS_DEV` to server
    - Deploys to development environment
    - Restarts `discord-bot-dev.service`
+
+### Workflow Trigger Behavior
+
+The development workflow uses this trigger configuration:
+
+```yaml
+on:
+  push:
+    branches-ignore:
+      - main  # Deploy to dev for ANY branch except main
+  pull_request:
+    branches: [ main ]
+```
+
+**What happens in each scenario:**
+
+| Action | Branch | Dev Workflow | Prod Workflow |
+|--------|--------|--------------|---------------|
+| Push | `feature-branch` | ✅ Tests + Deploy | ❌ |
+| Push | `any-new-branch` | ✅ Tests + Deploy | ❌ |
+| Push | `main` | ❌ | ✅ Tests + Deploy |
+| PR created | → `main` | ✅ Tests only | ❌ |
+| PR merged | → `main` | ❌ | ✅ Tests + Deploy |
+
+**Detailed Scenarios:**
+
+1. **Push to feature branch** (e.g., `git push origin my-feature`):
+   - Dev workflow triggers because `my-feature` ≠ `main`
+   - Tests run → Deploy to dev server → Restart `discord-bot-dev.service`
+
+2. **Create Pull Request to `main`**:
+   - Dev workflow triggers for `pull_request` event
+   - Tests run only (deployment skipped via `if: github.event_name == 'push'`)
+   - This validates code before merge without affecting dev server
+
+3. **Merge PR to `main`**:
+   - Creates a push event to `main`
+   - Dev workflow **skips** (because of `branches-ignore: [main]`)
+   - Production workflow **triggers** (because of `push: branches: [main]`)
+   - Tests run → Deploy to prod server → Restart `discord-bot.service`
 
 **How Credentials are Deployed:**
 
@@ -547,6 +588,40 @@ sudo bash /path/to/deploy.sh production
 # Development deployment
 sudo bash /path/to/deploy.sh development
 ```
+
+## Manual Deployment CLI Commands
+
+When you need to deploy manually (bypassing GitHub Actions), use these commands:
+
+### GitHub CLI - Trigger Workflow Manually
+
+```bash
+# Trigger production deployment workflow
+gh workflow run "Deploy to Production (GCP)"
+
+# Trigger development deployment workflow
+gh workflow run "Deploy to Development (GCP)"
+
+# Check workflow run status
+gh run list --workflow="Deploy to Production (GCP)" --limit 5
+```
+
+### gcloud CLI - Deploy Directly on Server
+
+**Production Deployment:**
+
+```bash
+gcloud compute ssh botuser@discord-bot-server --zone=australia-southeast1-a --command="cd /opt/discord-bot/app && git fetch origin main && git reset --hard origin/main && source /opt/miniconda/etc/profile.d/conda.sh && conda activate discord_env && pip install -r requirements.txt --quiet && sudo systemctl restart discord-bot.service && sudo systemctl status discord-bot.service"
+```
+
+**Development Deployment:**
+
+```bash
+# Replace <BRANCH_NAME> with your branch name
+gcloud compute ssh botuser@discord-bot-server --zone=australia-southeast1-a --command="cd /opt/discord-bot/app && git fetch origin <BRANCH_NAME> && git reset --hard origin/<BRANCH_NAME> && source /opt/miniconda/etc/profile.d/conda.sh && conda activate discord_env && pip install -r requirements.txt --quiet && sudo systemctl restart discord-bot-dev.service && sudo systemctl status discord-bot-dev.service"
+```
+
+**Note:** These commands pull the latest code from the specified branch, install dependencies, and restart the service. Use this when GitHub Actions is unavailable or for emergency deployments.
 
 ## Monitoring
 

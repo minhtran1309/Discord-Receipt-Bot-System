@@ -1,13 +1,15 @@
 """Clerk cog - handles /clerk commands for expense tracking."""
 
+from datetime import datetime
+
 import discord
 from discord import app_commands
 from discord.ext import commands
-from bot.services.sheets import SheetsService
-from bot.storage import Storage
+
 from bot.budget_storage import BudgetStorage
 from bot.models import BudgetEntry
-from datetime import datetime
+from bot.services.sheets import SheetsService
+from bot.storage import Storage
 
 
 class ClerkCog(commands.Cog):
@@ -75,9 +77,17 @@ class ClerkCog(commands.Cog):
             print(f"[Clerk Sync] Synced {count} receipts to Sheet1")
 
             # Step 2: Sync receipt totals to receipt_total sheet
-            bot_signature = self.bot.settings.bot_name if hasattr(self.bot, 'settings') else "Receipt Bot (Local)"
-            month_cell_refs = self.sheets.sync_receipt_totals(receipts, bot_signature=bot_signature)
-            print(f"[Clerk Sync] Synced {len(receipts)} receipt totals to receipt_total sheet")
+            bot_signature = (
+                self.bot.settings.bot_name
+                if hasattr(self.bot, "settings")
+                else "Receipt Bot (Local)"
+            )
+            month_cell_refs = self.sheets.sync_receipt_totals(
+                receipts, bot_signature=bot_signature
+            )
+            print(
+                f"[Clerk Sync] Synced {len(receipts)} receipt totals to receipt_total sheet"
+            )
 
             # REMOVED: Step 3 formula updates (moved to /clerk expenses2total command)
 
@@ -92,20 +102,14 @@ class ClerkCog(commands.Cog):
                 title="✅ Sync Complete",
                 color=0x00FF00,
             )
+            embed.add_field(name="Newly Synced", value=f"{count} receipts", inline=True)
             embed.add_field(
-                name="Newly Synced",
-                value=f"{count} receipts",
-                inline=True
-            )
-            embed.add_field(
-                name="Already Synced",
-                value=f"{already_synced} receipts",
-                inline=True
+                name="Already Synced", value=f"{already_synced} receipts", inline=True
             )
             embed.add_field(
                 name="Total Verified",
                 value=f"{count + already_synced} receipts",
-                inline=True
+                inline=True,
             )
 
             if count > 0:
@@ -122,6 +126,7 @@ class ClerkCog(commands.Cog):
 
         except Exception as e:
             import traceback
+
             error_details = traceback.format_exc()
             print(f"[Clerk Sync] Error during sync:\n{error_details}")
             await interaction.followup.send(
@@ -173,12 +178,8 @@ class ClerkCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @clerk_group.command(
-        name="monthly", description="Get monthly expense summary"
-    )
-    async def monthly(
-        self, interaction: discord.Interaction, month: str = None
-    ):
+    @clerk_group.command(name="monthly", description="Get monthly expense summary")
+    async def monthly(self, interaction: discord.Interaction, month: str = None):
         """Get expense summary for a month (YYYY-MM format)."""
         if not month:
             month = datetime.now().strftime("%Y-%m")
@@ -252,10 +253,7 @@ class ClerkCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @clerk_group.command(
-        name="status",
-        description="Check sync status of receipts"
-    )
+    @clerk_group.command(name="status", description="Check sync status of receipts")
     async def status(self, interaction: discord.Interaction):
         """Show sync status of all receipts."""
         await interaction.response.defer()
@@ -282,27 +280,23 @@ class ClerkCog(commands.Cog):
 
         embed = discord.Embed(
             title="📊 Receipt Sync Status",
-            color=0x3498db,
+            color=0x3498DB,
         )
         embed.add_field(
             name="✅ Synced to Sheets",
             value=f"{verified_synced} receipts",
-            inline=False
+            inline=False,
         )
         embed.add_field(
             name="⏳ Verified (Not Synced)",
             value=f"{verified_unsynced} receipts",
-            inline=False
+            inline=False,
         )
         embed.add_field(
-            name="⏸️ Unverified",
-            value=f"{unverified} receipts",
-            inline=False
+            name="⏸️ Unverified", value=f"{unverified} receipts", inline=False
         )
         embed.add_field(
-            name="📁 Total Receipts",
-            value=f"{total} receipts",
-            inline=False
+            name="📁 Total Receipts", value=f"{total} receipts", inline=False
         )
 
         if verified_unsynced > 0:
@@ -313,14 +307,9 @@ class ClerkCog(commands.Cog):
         await interaction.followup.send(embed=embed)
 
     @clerk_group.command(
-        name="special_treat",
-        description="Log eating out or takeaway drink expense"
+        name="special_treat", description="Log eating out or takeaway drink expense"
     )
-    async def special_treat(
-        self,
-        interaction: discord.Interaction,
-        amount: float
-    ):
+    async def special_treat(self, interaction: discord.Interaction, amount: float):
         """Log an eating out expense and update budget tracking.
 
         Args:
@@ -339,11 +328,7 @@ class ClerkCog(commands.Cog):
             month = now.strftime("%Y-%m")
 
             # Create budget entry
-            entry = BudgetEntry(
-                date=now,
-                amount=amount,
-                month=month
-            )
+            entry = BudgetEntry(date=now, amount=amount, month=month)
 
             # Save to local storage
             filename = self.budget_storage.save_entry(entry)
@@ -353,10 +338,10 @@ class ClerkCog(commands.Cog):
             try:
                 row = [
                     now.strftime("%Y-%m-%d"),  # Date
-                    now.strftime("%H:%M"),     # Time
-                    amount,                     # Amount
-                    "Eating out / Takeaway",    # Category
-                    month,                      # Month
+                    now.strftime("%H:%M"),  # Time
+                    amount,  # Amount
+                    "Eating out / Takeaway",  # Category
+                    month,  # Month
                 ]
                 self.sheets.append_row("eat_out", row)
                 print(f"[Budget] Updated Google Sheets: eat_out")
@@ -374,18 +359,12 @@ class ClerkCog(commands.Cog):
             embed = discord.Embed(
                 title="🍔 Special Treat Logged",
                 color=0x00FF00 if not budget.overspent else 0xFF0000,
-                timestamp=now
+                timestamp=now,
             )
 
+            embed.add_field(name="Amount Spent", value=f"${amount:.2f}", inline=True)
             embed.add_field(
-                name="Amount Spent",
-                value=f"${amount:.2f}",
-                inline=True
-            )
-            embed.add_field(
-                name="Date",
-                value=now.strftime("%Y-%m-%d %H:%M"),
-                inline=True
+                name="Date", value=now.strftime("%Y-%m-%d %H:%M"), inline=True
             )
 
             embed.add_field(
@@ -395,7 +374,7 @@ class ClerkCog(commands.Cog):
                     f"**Spent**: ${budget.spent:.2f}\n"
                     f"**Remaining**: ${budget.remaining:.2f}"
                 ),
-                inline=False
+                inline=False,
             )
 
             # Add overspending warning or surplus message
@@ -406,7 +385,7 @@ class ClerkCog(commands.Cog):
                         f"You've overspent by **${abs(budget.remaining):.2f}** this month!\n"
                         f"I'll remind you about this when you sync grocery receipts."
                     ),
-                    inline=False
+                    inline=False,
                 )
                 embed.color = 0xFF0000  # Red
             elif budget.remaining > 0:
@@ -416,7 +395,7 @@ class ClerkCog(commands.Cog):
                         f"Great! You have **${budget.remaining:.2f}** left for {month}.\n"
                         f"Unused budget will be added to Nov/Dec for holiday shopping!"
                     ),
-                    inline=False
+                    inline=False,
                 )
 
             # Show year-to-date surplus
@@ -425,32 +404,26 @@ class ClerkCog(commands.Cog):
                 embed.add_field(
                     name="🎄 Holiday Shopping Fund",
                     value=f"**${year_surplus:.2f}** saved for Nov/Dec",
-                    inline=False
+                    inline=False,
                 )
 
             await interaction.followup.send(embed=embed)
 
         except Exception as e:
             import traceback
+
             error_details = traceback.format_exc()
             print(f"[Budget] Error: {error_details}")
-            await interaction.followup.send(
-                f"❌ Error logging special treat: {e}"
-            )
+            await interaction.followup.send(f"❌ Error logging special treat: {e}")
 
     @clerk_group.command(
-        name="budget_status",
-        description="Check eating out budget status"
+        name="budget_status", description="Check eating out budget status"
     )
-    async def budget_status(
-        self,
-        interaction: discord.Interaction,
-        month: str = None
-    ):
+    async def budget_status(self, interaction: discord.Interaction, month: str = None):
         """Check eating out budget status for a specific month.
-3
-        Args:
-            month: Month in YYYY-MM format (default: current month)
+        3
+                Args:
+                    month: Month in YYYY-MM format (default: current month)
         """
         await interaction.response.defer()
 
@@ -484,7 +457,7 @@ class ClerkCog(commands.Cog):
                     f"**Spent**: ${budget.spent:.2f}\n"
                     f"**Remaining**: ${budget.remaining:.2f}"
                 ),
-                inline=False
+                inline=False,
             )
 
             # Show entries
@@ -500,13 +473,13 @@ class ClerkCog(commands.Cog):
                 embed.add_field(
                     name=f"📝 Recent Entries ({len(budget.entries)} total)",
                     value=entries_text,
-                    inline=False
+                    inline=False,
                 )
             else:
                 embed.add_field(
                     name="📝 Entries",
                     value="No eating out expenses logged this month",
-                    inline=False
+                    inline=False,
                 )
 
             # Show year surplus
@@ -516,16 +489,20 @@ class ClerkCog(commands.Cog):
                 embed.add_field(
                     name="🎄 Holiday Shopping Fund",
                     value=f"**${year_surplus:.2f}** saved for Nov/Dec",
-                    inline=False
+                    inline=False,
                 )
 
             # Add status message
             if budget.overspent:
-                embed.description = f"⚠️ Budget exceeded by **${abs(budget.remaining):.2f}**"
+                embed.description = (
+                    f"⚠️ Budget exceeded by **${abs(budget.remaining):.2f}**"
+                )
             elif budget.spent == 0:
                 embed.description = "✨ No spending this month - full budget available!"
             else:
-                embed.description = f"✅ **${budget.remaining:.2f}** remaining for this month"
+                embed.description = (
+                    f"✅ **${budget.remaining:.2f}** remaining for this month"
+                )
 
             await interaction.followup.send(embed=embed)
 
@@ -533,14 +510,10 @@ class ClerkCog(commands.Cog):
             await interaction.followup.send(f"❌ Error checking budget status: {e}")
 
     @clerk_group.command(
-        name="personal",
-        description="Log personal expense without receipt"
+        name="personal", description="Log personal expense without receipt"
     )
     async def personal(
-        self,
-        interaction: discord.Interaction,
-        amount: float,
-        description: str
+        self, interaction: discord.Interaction, amount: float, description: str
     ):
         """Log a personal expense.
 
@@ -551,14 +524,10 @@ class ClerkCog(commands.Cog):
         await self._log_expense(interaction, "personal", amount, description)
 
     @clerk_group.command(
-        name="utilities",
-        description="Log utilities expense without receipt"
+        name="utilities", description="Log utilities expense without receipt"
     )
     async def utilities(
-        self,
-        interaction: discord.Interaction,
-        amount: float,
-        description: str
+        self, interaction: discord.Interaction, amount: float, description: str
     ):
         """Log a utilities expense.
 
@@ -569,14 +538,10 @@ class ClerkCog(commands.Cog):
         await self._log_expense(interaction, "utilities", amount, description)
 
     @clerk_group.command(
-        name="transport",
-        description="Log transport expense without receipt"
+        name="transport", description="Log transport expense without receipt"
     )
     async def transport(
-        self,
-        interaction: discord.Interaction,
-        amount: float,
-        description: str
+        self, interaction: discord.Interaction, amount: float, description: str
     ):
         """Log a transport expense.
 
@@ -587,14 +552,10 @@ class ClerkCog(commands.Cog):
         await self._log_expense(interaction, "transport", amount, description)
 
     @clerk_group.command(
-        name="extraordinary",
-        description="Log extraordinary expense without receipt"
+        name="extraordinary", description="Log extraordinary expense without receipt"
     )
     async def extraordinary(
-        self,
-        interaction: discord.Interaction,
-        amount: float,
-        description: str
+        self, interaction: discord.Interaction, amount: float, description: str
     ):
         """Log an extraordinary expense.
 
@@ -609,7 +570,7 @@ class ClerkCog(commands.Cog):
         interaction: discord.Interaction,
         category: str,
         amount: float,
-        description: str
+        description: str,
     ):
         """Internal method to log an expense.
 
@@ -632,7 +593,11 @@ class ClerkCog(commands.Cog):
             month = now.strftime("%Y-%m")
 
             # Get bot signature from config
-            bot_signature = self.bot.settings.bot_name if hasattr(self.bot, 'settings') else "Receipt Bot (Local)"
+            bot_signature = (
+                self.bot.settings.bot_name
+                if hasattr(self.bot, "settings")
+                else "Receipt Bot (Local)"
+            )
 
             # Append directly to Google Sheets (no local storage)
             try:
@@ -643,11 +608,11 @@ class ClerkCog(commands.Cog):
                 # Prepare row: [Date, Time, Amount, Category, Month, submitted_by]
                 row = [
                     now.strftime("%Y-%m-%d"),  # Date
-                    now.strftime("%H:%M"),     # Time
-                    amount,                     # Amount
-                    category,                   # Category
-                    month,                      # Month
-                    bot_signature               # submitted_by
+                    now.strftime("%H:%M"),  # Time
+                    amount,  # Amount
+                    category,  # Category
+                    month,  # Month
+                    bot_signature,  # submitted_by
                 ]
 
                 # Append to sheet
@@ -656,16 +621,26 @@ class ClerkCog(commands.Cog):
 
                 # Rebuild formula from Google Sheets (source of truth)
                 # This reads all rows for the month and generates complete formula
-                new_formula = self.sheets.rebuild_formula_from_sheet(sheet_name, category, month, amount_column="C")
-                print(f"[Expense] Rebuilt formula for {category}/{month}: {new_formula}")
+                new_formula = self.sheets.rebuild_formula_from_sheet(
+                    sheet_name, category, month, amount_column="C"
+                )
+                print(
+                    f"[Expense] Rebuilt formula for {category}/{month}: {new_formula}"
+                )
 
                 # Update total_cost_monthly with complete formula
                 if new_formula:
                     worksheet = self.sheets.get_worksheet("total_cost_monthly")
-                    category_row = self.sheets.find_or_create_category_row("total_cost_monthly", category)
-                    month_col = self.sheets.find_or_create_month_column("total_cost_monthly", month)
+                    category_row = self.sheets.find_or_create_category_row(
+                        "total_cost_monthly", category
+                    )
+                    month_col = self.sheets.find_or_create_month_column(
+                        "total_cost_monthly", month
+                    )
                     worksheet.update_cell(category_row, month_col, new_formula)
-                    print(f"[Expense] Updated total_cost_monthly formula for {category}/{month}")
+                    print(
+                        f"[Expense] Updated total_cost_monthly formula for {category}/{month}"
+                    )
 
             except Exception as e:
                 print(f"[Expense] Error updating Google Sheets: {e}")
@@ -685,7 +660,9 @@ class ClerkCog(commands.Cog):
                 for row in all_records[1:]:  # Skip header
                     if len(row) > 4 and row[4] == month:  # Column E (index 4) is Month
                         try:
-                            monthly_total += float(row[2])  # Column C (index 2) is Amount
+                            monthly_total += float(
+                                row[2]
+                            )  # Column C (index 2) is Amount
                         except (ValueError, IndexError):
                             continue
 
@@ -697,23 +674,13 @@ class ClerkCog(commands.Cog):
             embed = discord.Embed(
                 title=f"💰 {category.title()} Expense Logged",
                 color=0x00FF00,
-                timestamp=now
+                timestamp=now,
             )
 
+            embed.add_field(name="Amount", value=f"${amount:.2f}", inline=True)
+            embed.add_field(name="Description", value=description, inline=True)
             embed.add_field(
-                name="Amount",
-                value=f"${amount:.2f}",
-                inline=True
-            )
-            embed.add_field(
-                name="Description",
-                value=description,
-                inline=True
-            )
-            embed.add_field(
-                name=f"📊 {month} Total",
-                value=f"${monthly_total:.2f}",
-                inline=False
+                name=f"📊 {month} Total", value=f"${monthly_total:.2f}", inline=False
             )
 
             embed.description = f"✅ Expense logged and synced to Google Sheets"
@@ -722,15 +689,14 @@ class ClerkCog(commands.Cog):
 
         except Exception as e:
             import traceback
+
             error_details = traceback.format_exc()
             print(f"[Expense] Error: {error_details}")
-            await interaction.followup.send(
-                f"❌ Error logging {category} expense: {e}"
-            )
+            await interaction.followup.send(f"❌ Error logging {category} expense: {e}")
 
     @clerk_group.command(
         name="expenses2total",
-        description="Rebuild all formulas in total_cost_monthly from expense sheets"
+        description="Rebuild all formulas in total_cost_monthly from expense sheets",
     )
     async def expenses2total(self, interaction: discord.Interaction):
         """Rebuild all category formulas in total_cost_monthly by reading from all expense sheets.
@@ -758,9 +724,7 @@ class ClerkCog(commands.Cog):
             for category, count in stats.items():
                 if count > 0:
                     embed.add_field(
-                        name=category,
-                        value=f"{count} month(s) updated",
-                        inline=True
+                        name=category, value=f"{count} month(s) updated", inline=True
                     )
                     total_formulas += count
 
@@ -775,6 +739,7 @@ class ClerkCog(commands.Cog):
 
         except Exception as e:
             import traceback
+
             error_details = traceback.format_exc()
             print(f"[ExpensesToTotal] Error:\n{error_details}")
             await interaction.followup.send(

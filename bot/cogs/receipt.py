@@ -117,9 +117,18 @@ class ReceiptCog(commands.Cog):
         """
         # Month names for display
         MONTH_NAMES = {
-            1: "January", 2: "February", 3: "March", 4: "April",
-            5: "May", 6: "June", 7: "July", 8: "August",
-            9: "September", 10: "October", 11: "November", 12: "December"
+            1: "January",
+            2: "February",
+            3: "March",
+            4: "April",
+            5: "May",
+            6: "June",
+            7: "July",
+            8: "August",
+            9: "September",
+            10: "October",
+            11: "November",
+            12: "December",
         }
 
         # Build title
@@ -142,7 +151,7 @@ class ReceiptCog(commands.Cog):
 
         for idx, receipt in enumerate(receipts, start=1):
             # Remove .json extension from filename for display
-            display_name = receipt.filename.replace('.json', '')
+            display_name = receipt.filename.replace(".json", "")
 
             # Format total
             total_str = f"${receipt.total:.2f}"
@@ -150,7 +159,9 @@ class ReceiptCog(commands.Cog):
 
             # Status emojis
             verified_status = "✅ Verified" if receipt.verified else "⚠️ Not Verified"
-            synced_status = "✅ Synced to Sheets" if receipt.synced_to_sheets else "❌ Not Synced"
+            synced_status = (
+                "✅ Synced to Sheets" if receipt.synced_to_sheets else "❌ Not Synced"
+            )
 
             # Build receipt entry
             lines.append(f"**{idx}. {display_name}**")
@@ -165,9 +176,13 @@ class ReceiptCog(commands.Cog):
         if len(description) > 4096:
             # Truncate and add indicator
             description = description[:4090] + "\n..."
-            embed.set_footer(text=f"Total spent: ${total_spent:.2f} | {len(receipts)} receipts (truncated)")
+            embed.set_footer(
+                text=f"Total spent: ${total_spent:.2f} | {len(receipts)} receipts (truncated)"
+            )
         else:
-            embed.set_footer(text=f"Total spent: ${total_spent:.2f} | {len(receipts)} receipts")
+            embed.set_footer(
+                text=f"Total spent: ${total_spent:.2f} | {len(receipts)} receipts"
+            )
 
         embed.description = description
         return embed
@@ -209,7 +224,10 @@ class ReceiptCog(commands.Cog):
             self.storage.rename_ocr_cache(temp_cache_filename, final_cache_filename)
 
             # Show major store detection message
-            if hasattr(parsed, '_major_store_detected') and parsed._major_store_detected:
+            if (
+                hasattr(parsed, "_major_store_detected")
+                and parsed._major_store_detected
+            ):
                 await interaction.followup.send(
                     f"🏪 **{parsed.store} receipt detected!** Using specialized processing for accurate item extraction."
                 )
@@ -309,12 +327,10 @@ class ReceiptCog(commands.Cog):
 
     @receipt_group.command(
         name="reprocess",
-        description="Reprocess last receipt from OCR cache without re-uploading image"
+        description="Reprocess last receipt from OCR cache without re-uploading image",
     )
     async def reprocess(
-        self,
-        interaction: discord.Interaction,
-        cache_filename: str = None
+        self, interaction: discord.Interaction, cache_filename: str = None
     ):
         """Reprocess a receipt from OCR cache.
 
@@ -353,7 +369,10 @@ class ReceiptCog(commands.Cog):
             parsed = self.ai_extractor.convert_to_receipt(extracted_data, ocr_text)
 
             # Show major store detection message
-            if hasattr(parsed, '_major_store_detected') and parsed._major_store_detected:
+            if (
+                hasattr(parsed, "_major_store_detected")
+                and parsed._major_store_detected
+            ):
                 await interaction.followup.send(
                     f"🏪 **{parsed.store} receipt detected!** Using specialized processing for accurate item extraction."
                 )
@@ -447,12 +466,12 @@ class ReceiptCog(commands.Cog):
 
     @receipt_group.command(
         name="list",
-        description="List processed receipts (optional: filter by month 1-12)"
+        description="List processed receipts (optional: filter by month 1-12)",
     )
     async def list_receipts(
         self,
         interaction: discord.Interaction,
-        month: app_commands.Range[int, 1, 12] | None = None
+        month: app_commands.Range[int, 1, 12] | None = None,
     ):
         """List all stored receipts with optional month filtering.
 
@@ -492,8 +511,7 @@ class ReceiptCog(commands.Cog):
 
         # Filter receipts by month
         filtered_receipts = [
-            r for r in loaded_receipts
-            if r.datetime.month == filter_month
+            r for r in loaded_receipts if r.datetime.month == filter_month
         ]
 
         # If no month parameter provided, limit to 30 most recent
@@ -509,9 +527,18 @@ class ReceiptCog(commands.Cog):
         # Handle no results
         if not filtered_receipts:
             MONTH_NAMES = {
-                1: "January", 2: "February", 3: "March", 4: "April",
-                5: "May", 6: "June", 7: "July", 8: "August",
-                9: "September", 10: "October", 11: "November", 12: "December"
+                1: "January",
+                2: "February",
+                3: "March",
+                4: "April",
+                5: "May",
+                6: "June",
+                7: "July",
+                8: "August",
+                9: "September",
+                10: "October",
+                11: "November",
+                12: "December",
             }
             month_name = MONTH_NAMES.get(filter_month, "Unknown")
             await interaction.response.send_message(
@@ -521,13 +548,15 @@ class ReceiptCog(commands.Cog):
 
         # Format and send
         embed = self._format_receipt_list_toon(
-            filtered_receipts,
-            month=filter_month,
-            year=current_year
+            filtered_receipts, month=filter_month, year=current_year
         )
 
         # Add note if showing limited results
-        if month is None and len([r for r in loaded_receipts if r.datetime.month == filter_month]) > 30:
+        if (
+            month is None
+            and len([r for r in loaded_receipts if r.datetime.month == filter_month])
+            > 30
+        ):
             current_footer = embed.footer.text if embed.footer else ""
             embed.set_footer(text=f"{current_footer} | Showing 30 most recent")
 
@@ -682,7 +711,10 @@ class ReceiptCog(commands.Cog):
 
         await interaction.followup.send(embed=embed)
 
-    @receipt_group.command(name="correct_price", description="Correct an item's price or total price (use -1)")
+    @receipt_group.command(
+        name="correct_price",
+        description="Correct an item's price or total price (use -1)",
+    )
     async def correct_price(
         self,
         interaction: discord.Interaction,

@@ -201,6 +201,6 @@ class Storage:
         cache_files = sorted(
             self.ocr_cache_dir.glob("*_ocr.txt"),
             key=lambda f: f.stat().st_mtime,
-            reverse=True
+            reverse=True,
         )
         return [f.stem.replace("_ocr", "") for f in cache_files]

@@ -1,8 +1,8 @@
 """Test the enhanced /receipt list command functionality."""
 
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 # Add parent directory to path to import bot modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -45,7 +45,8 @@ def test_receipt_list_filtering():
     print(f"{'='*60}")
 
     current_month_receipts = [
-        r for r in loaded_receipts
+        r
+        for r in loaded_receipts
         if r.datetime.month == current_month and r.datetime.year == current_year
     ]
     current_month_receipts.sort(key=lambda r: r.datetime, reverse=True)
@@ -54,7 +55,7 @@ def test_receipt_list_filtering():
 
     # Show first 5 receipts in TOON format
     for idx, receipt in enumerate(current_month_receipts[:5], start=1):
-        display_name = receipt.filename.replace('.json', '')
+        display_name = receipt.filename.replace(".json", "")
         verified_status = "✅ Verified" if receipt.verified else "⚠️ Not Verified"
         synced_status = "✅ Synced" if receipt.synced_to_sheets else "❌ Not Synced"
         print(f"\n{idx}. {display_name}")
@@ -74,17 +75,14 @@ def test_receipt_list_filtering():
     print(f"Test 2: Filter by December (month={test_month})")
     print(f"{'='*60}")
 
-    december_receipts = [
-        r for r in loaded_receipts
-        if r.datetime.month == test_month
-    ]
+    december_receipts = [r for r in loaded_receipts if r.datetime.month == test_month]
     december_receipts.sort(key=lambda r: r.datetime, reverse=True)
 
     print(f"Found {len(december_receipts)} receipts for December")
 
     if december_receipts:
         for idx, receipt in enumerate(december_receipts[:3], start=1):
-            display_name = receipt.filename.replace('.json', '')
+            display_name = receipt.filename.replace(".json", "")
             print(f"\n{idx}. {display_name}")
             print(f"   💰 Total: ${receipt.total:.2f}")
             print(f"   📅 Date: {receipt.datetime.strftime('%Y-%m-%d %H:%M')}")
@@ -100,7 +98,9 @@ def test_receipt_list_filtering():
     print(f"Limited to: {len(limited_receipts)} receipts")
 
     if len(current_month_receipts) > 30:
-        print(f"⚠️ Note: {len(current_month_receipts) - 30} receipts hidden due to 30-item limit")
+        print(
+            f"⚠️ Note: {len(current_month_receipts) - 30} receipts hidden due to 30-item limit"
+        )
     else:
         print("✅ All receipts fit within 30-item limit")
 
