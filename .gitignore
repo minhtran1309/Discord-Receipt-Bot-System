@@ -82,3 +82,6 @@ dmypy.json
 # Development documentation
 CLAUDE.md
 Claude.md
+
+# Claude Code context files (session-specific, not shared)
+.claude/

@@ -102,6 +102,76 @@ class ReceiptCog(commands.Cog):
 
         return "\n".join(lines)
 
+    def _format_receipt_list_toon(
+        self, receipts: list[Receipt], month: int | None = None, year: int | None = None
+    ) -> discord.Embed:
+        """Format receipt list in TOON format with metadata.
+
+        Args:
+            receipts: List of Receipt objects to display
+            month: Optional month number (1-12) for title display
+            year: Optional year for title display
+
+        Returns:
+            Discord embed with formatted receipt list
+        """
+        # Month names for display
+        MONTH_NAMES = {
+            1: "January", 2: "February", 3: "March", 4: "April",
+            5: "May", 6: "June", 7: "July", 8: "August",
+            9: "September", 10: "October", 11: "November", 12: "December"
+        }
+
+        # Build title
+        if month and year:
+            month_name = MONTH_NAMES.get(month, "Unknown")
+            title = f"📋 Receipts for {month_name} {year} ({len(receipts)} found)"
+        else:
+            title = f"📋 All Receipts ({len(receipts)} found)"
+
+        # Create embed with blue color (consistent with current list view)
+        embed = discord.Embed(title=title, color=0x0000FF)
+
+        if not receipts:
+            embed.description = "No receipts found for this period."
+            return embed
+
+        # Format each receipt
+        lines = []
+        total_spent = 0.0
+
+        for idx, receipt in enumerate(receipts, start=1):
+            # Remove .json extension from filename for display
+            display_name = receipt.filename.replace('.json', '')
+
+            # Format total
+            total_str = f"${receipt.total:.2f}"
+            total_spent += receipt.total
+
+            # Status emojis
+            verified_status = "✅ Verified" if receipt.verified else "⚠️ Not Verified"
+            synced_status = "✅ Synced to Sheets" if receipt.synced_to_sheets else "❌ Not Synced"
+
+            # Build receipt entry
+            lines.append(f"**{idx}. {display_name}**")
+            lines.append(f"   💰 Total: {total_str}")
+            lines.append(f"   {verified_status} | {synced_status}")
+            lines.append("")  # Blank line for spacing
+
+        # Join all lines
+        description = "\n".join(lines)
+
+        # Check if description exceeds Discord's limit (4096 chars)
+        if len(description) > 4096:
+            # Truncate and add indicator
+            description = description[:4090] + "\n..."
+            embed.set_footer(text=f"Total spent: ${total_spent:.2f} | {len(receipts)} receipts (truncated)")
+        else:
+            embed.set_footer(text=f"Total spent: ${total_spent:.2f} | {len(receipts)} receipts")
+
+        embed.description = description
+        return embed
+
     @receipt_group.command(
         name="process", description="Upload and process a receipt image"
     )
@@ -375,21 +445,91 @@ class ReceiptCog(commands.Cog):
                 f"💡 **Tip**: Try uploading the image again with `/receipt process`"
             )
 
-    @receipt_group.command(name="list", description="List all processed receipts")
-    async def list_receipts(self, interaction: discord.Interaction):
-        """List all stored receipts."""
-        receipts = self.storage.list_receipts()
+    @receipt_group.command(
+        name="list",
+        description="List processed receipts (optional: filter by month 1-12)"
+    )
+    async def list_receipts(
+        self,
+        interaction: discord.Interaction,
+        month: app_commands.Range[int, 1, 12] | None = None
+    ):
+        """List all stored receipts with optional month filtering.
 
-        if not receipts:
+        Args:
+            interaction: Discord interaction
+            month: Optional month number (1-12) to filter receipts
+        """
+        from datetime import datetime
+
+        # Get all receipt filenames
+        receipt_filenames = self.storage.list_receipts()
+
+        if not receipt_filenames:
             await interaction.response.send_message("No receipts found.")
             return
 
-        embed = discord.Embed(title="Stored Receipts", color=0x0000FF)
-        receipt_list = "\n".join(f"• {r}" for r in receipts[:25])
-        embed.description = receipt_list
+        # Load full Receipt objects
+        loaded_receipts: list[Receipt] = []
+        for filename in receipt_filenames:
+            try:
+                receipt = self.storage.load_receipt(filename)
+                if receipt:
+                    loaded_receipts.append(receipt)
+            except Exception as e:
+                # Log warning but continue with other receipts
+                print(f"Warning: Failed to load receipt {filename}: {e}")
+                continue
 
-        if len(receipts) > 25:
-            embed.set_footer(text=f"Showing 25 of {len(receipts)} receipts")
+        if not loaded_receipts:
+            await interaction.response.send_message("No valid receipts found.")
+            return
+
+        # Determine filtering month and year
+        current_date = datetime.now()
+        filter_month = month if month is not None else current_date.month
+        current_year = current_date.year
+
+        # Filter receipts by month
+        filtered_receipts = [
+            r for r in loaded_receipts
+            if r.datetime.month == filter_month
+        ]
+
+        # If no month parameter provided, limit to 30 most recent
+        # If month parameter provided, show all receipts for that month
+        if month is None:
+            # Sort by datetime (newest first) and limit to 30
+            filtered_receipts.sort(key=lambda r: r.datetime, reverse=True)
+            filtered_receipts = filtered_receipts[:30]
+        else:
+            # Sort by datetime (newest first), no limit
+            filtered_receipts.sort(key=lambda r: r.datetime, reverse=True)
+
+        # Handle no results
+        if not filtered_receipts:
+            MONTH_NAMES = {
+                1: "January", 2: "February", 3: "March", 4: "April",
+                5: "May", 6: "June", 7: "July", 8: "August",
+                9: "September", 10: "October", 11: "November", 12: "December"
+            }
+            month_name = MONTH_NAMES.get(filter_month, "Unknown")
+            await interaction.response.send_message(
+                f"No receipts found for {month_name} {current_year}."
+            )
+            return
+
+        # Format and send
+        embed = self._format_receipt_list_toon(
+            filtered_receipts,
+            month=filter_month,
+            year=current_year
+        )
+
+        # Add note if showing limited results
+        if month is None and len([r for r in loaded_receipts if r.datetime.month == filter_month]) > 30:
+            current_footer = embed.footer.text if embed.footer else ""
+            embed.set_footer(text=f"{current_footer} | Showing 30 most recent")
 
         await interaction.response.send_message(embed=embed)
 
