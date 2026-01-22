@@ -218,6 +218,8 @@ Return ONLY valid JSON, no markdown formatting."""
         )
 
         # Store major store detection metadata (not persisted)
-        receipt._major_store_detected = extracted_data.get("_major_store_detected", False)
+        receipt._major_store_detected = extracted_data.get(
+            "_major_store_detected", False
+        )
 
         return receipt

@@ -2,7 +2,8 @@ name: Deploy to Development (GCP)
 
 on:
   push:
-    branches: [  guess_feature, clerk_feature_dev ]
+    branches-ignore:
+      - main  # Deploy to dev for ANY branch except main
   pull_request:
     branches: [ main ]
 

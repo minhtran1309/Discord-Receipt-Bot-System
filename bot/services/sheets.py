@@ -11,7 +11,12 @@ from bot.models import Receipt
 class SheetsService:
     """Service for syncing receipt data to Google Sheets."""
 
-    def __init__(self, credentials_path: str, spreadsheet_id: str, bot_name: str = "Receipt Bot (Unknown)"):
+    def __init__(
+        self,
+        credentials_path: str,
+        spreadsheet_id: str,
+        bot_name: str = "Receipt Bot (Unknown)",
+    ):
         """Initialize Google Sheets service.
 
         Args:
@@ -230,7 +235,9 @@ class SheetsService:
 
         return next_col
 
-    def update_formula_cell(self, worksheet_name: str, category: str, month: str, new_cell_ref: str):
+    def update_formula_cell(
+        self, worksheet_name: str, category: str, month: str, new_cell_ref: str
+    ):
         """Update a formula cell in total_cost_monthly sheet by appending a new cell reference.
 
         Args:
@@ -257,7 +264,9 @@ class SheetsService:
         worksheet.update_cell(category_row, month_col, updated_formula)
         print(f"[Sheets] Updated {category} formula for {month}: {updated_formula}")
 
-    def rebuild_formula_from_sheet(self, source_sheet: str, category: str, month: str, amount_column: str = "C") -> str:
+    def rebuild_formula_from_sheet(
+        self, source_sheet: str, category: str, month: str, amount_column: str = "C"
+    ) -> str:
         """Read all rows from a source sheet for a specific month and rebuild formula from scratch.
 
         This method reads from Google Sheets (source of truth) instead of relying on internal memory.
@@ -301,7 +310,9 @@ class SheetsService:
                     if date_part and len(date_part) >= 7:
                         row_month = date_part[:7]  # Extract YYYY-MM
                         if row_month == month:
-                            cell_refs.append(f"{source_sheet}!B{row_idx}")  # Column B is total_price
+                            cell_refs.append(
+                                f"{source_sheet}!B{row_idx}"
+                            )  # Column B is total_price
 
         else:
             # For expense sheets (personal, utilities, transport, extraordinary)
@@ -379,7 +390,9 @@ class SheetsService:
 
         return count, synced_filenames
 
-    def sync_receipt_totals(self, receipts: list[Receipt], bot_signature: str = "Receipt Bot") -> dict[str, list[str]]:
+    def sync_receipt_totals(
+        self, receipts: list[Receipt], bot_signature: str = "Receipt Bot"
+    ) -> dict[str, list[str]]:
         """Sync receipt totals to receipt_total sheet and return cell references by month.
 
         Args:
@@ -409,15 +422,17 @@ class SheetsService:
 
             # Prepare row: [receipt_file_name, total_price, submitted_by, sync_status]
             row = [
-                receipt.filename,      # receipt_file_name (column A)
-                receipt.total,         # total_price (column B) ← THIS is what formulas reference
-                bot_signature,         # submitted_by (column C)
-                "synced",             # sync_status (column D)
+                receipt.filename,  # receipt_file_name (column A)
+                receipt.total,  # total_price (column B) ← THIS is what formulas reference
+                bot_signature,  # submitted_by (column C)
+                "synced",  # sync_status (column D)
             ]
 
             # Append row
             worksheet.append_row(row)
-            print(f"[Sheets] Added receipt total to row {next_row}: {receipt.filename} (${receipt.total:.2f})")
+            print(
+                f"[Sheets] Added receipt total to row {next_row}: {receipt.filename} (${receipt.total:.2f})"
+            )
 
             # Track cell reference (total_price is in column B)
             cell_ref = f"receipt_total!B{next_row}"
@@ -438,7 +453,9 @@ class SheetsService:
         """
         for month, cell_refs in month_cell_refs.items():
             for cell_ref in cell_refs:
-                self.update_formula_cell("total_cost_monthly", "shopping_expenses", month, cell_ref)
+                self.update_formula_cell(
+                    "total_cost_monthly", "shopping_expenses", month, cell_ref
+                )
 
     def rebuild_all_formulas(self) -> dict[str, int]:
         """Rebuild all formulas in total_cost_monthly by reading from all expense sheets.
@@ -466,9 +483,18 @@ class SheetsService:
 
         # Month name mapping (month_number -> column_name)
         month_names = {
-            1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr",
-            5: "May", 6: "Jun", 7: "Jul", 8: "Aug",
-            9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"
+            1: "Jan",
+            2: "Feb",
+            3: "Mar",
+            4: "Apr",
+            5: "May",
+            6: "Jun",
+            7: "Jul",
+            8: "Aug",
+            9: "Sep",
+            10: "Oct",
+            11: "Nov",
+            12: "Dec",
         }
 
         stats = {}
@@ -527,7 +553,9 @@ class SheetsService:
                 formula_count = 0
                 for month_name, row_indices in months_data.items():
                     # Build formula from row indices
-                    cell_refs = [f"{sheet_name}!{amount_col}{idx}" for idx in row_indices]
+                    cell_refs = [
+                        f"{sheet_name}!{amount_col}{idx}" for idx in row_indices
+                    ]
                     formula = self.build_formula(cell_refs)
 
                     if formula:
@@ -535,27 +563,36 @@ class SheetsService:
                         total_sheet = self.get_worksheet("total_cost_monthly")
 
                         # Find row by category name
-                        category_row = self._find_row_by_name(total_sheet, category_name)
+                        category_row = self._find_row_by_name(
+                            total_sheet, category_name
+                        )
                         if not category_row:
-                            print(f"[RebuildFormulas] Warning: Category '{category_name}' not found in total_cost_monthly")
+                            print(
+                                f"[RebuildFormulas] Warning: Category '{category_name}' not found in total_cost_monthly"
+                            )
                             continue
 
                         # Find column by month name
                         month_col = self._find_column_by_name(total_sheet, month_name)
                         if not month_col:
-                            print(f"[RebuildFormulas] Warning: Month '{month_name}' not found in total_cost_monthly")
+                            print(
+                                f"[RebuildFormulas] Warning: Month '{month_name}' not found in total_cost_monthly"
+                            )
                             continue
 
                         # Update the cell
                         total_sheet.update_cell(category_row, month_col, formula)
                         formula_count += 1
-                        print(f"[RebuildFormulas] {category_name}/{month_name}: {len(row_indices)} entries → Row {category_row}, Col {month_col}")
+                        print(
+                            f"[RebuildFormulas] {category_name}/{month_name}: {len(row_indices)} entries → Row {category_row}, Col {month_col}"
+                        )
 
                 stats[category_name] = formula_count
 
             except Exception as e:
                 print(f"[RebuildFormulas] Error processing {sheet_name}: {e}")
                 import traceback
+
                 traceback.print_exc()
                 stats[category_name] = 0
 
