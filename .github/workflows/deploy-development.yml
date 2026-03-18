@@ -2,10 +2,11 @@ name: Deploy to Development (GCP)
 
 on:
   push:
-    branches-ignore:
-      - main  # Deploy to dev for ANY branch except main
+    branches:
+      - develop
+      - 'feature/**'
   pull_request:
-    branches: [ main ]
+    branches: [ develop ]
 
 env:
   GCP_PROJECT_ID: gcp-discord-receipt-bot
