@@ -747,6 +747,139 @@ class ClerkCog(commands.Cog):
                 f"Check the bot console logs for more details."
             )
 
+    @clerk_group.command(
+        name="receipt", description="Manually declare a receipt total without image processing"
+    )
+    async def receipt(
+        self, interaction: discord.Interaction, store_name: str, total_price: float
+    ):
+        """Manually declare a receipt total and sync directly to Google Sheets.
+
+        Args:
+            store_name: Store name (e.g., "Woolworths", "Coles", "ALDI")
+            total_price: Total receipt amount (e.g., 45.50)
+        """
+        await interaction.response.defer()
+
+        try:
+            # Step 1: Validate inputs
+            if total_price <= 0:
+                await interaction.followup.send("❌ Total price must be greater than 0")
+                return
+
+            if total_price > 10000:
+                await interaction.followup.send(
+                    "❌ Total price seems unusually high. Max: $10,000"
+                )
+                return
+
+            if not store_name or len(store_name) < 1 or len(store_name) > 50:
+                await interaction.followup.send(
+                    "❌ Store name must be 1-50 characters"
+                )
+                return
+
+            # Step 2: Generate synthetic filename
+            now = datetime.now()
+            month = now.strftime("%Y-%m")
+            store_normalized = store_name.lower().replace(" ", "_")
+            synthetic_filename = f"self_{now.strftime('%Y-%m-%d_%H%M')}_{store_normalized}"
+
+            # Step 3: Get bot signature
+            bot_signature = (
+                self.bot.settings.bot_name
+                if hasattr(self.bot, "settings")
+                else "Receipt Bot (Local)"
+            )
+
+            # Step 4: Append directly to receipt_total sheet
+            try:
+                row = [
+                    synthetic_filename,  # Column A: receipt_file_name
+                    total_price,  # Column B: total_price (referenced by formulas)
+                    bot_signature,  # Column C: submitted_by
+                    "self_declared",  # Column D: sync_status (distinguishes from image-based)
+                ]
+                self.sheets.append_row("receipt_total", row)
+                print(
+                    f"[SelfDeclare] Added to receipt_total: {synthetic_filename} (${total_price:.2f})"
+                )
+
+            except Exception as e:
+                print(f"[SelfDeclare] Error appending to Google Sheets: {e}")
+                await interaction.followup.send(
+                    f"❌ Failed to save receipt to Google Sheets:\n```{str(e)}```\n\n"
+                    f"Please try again. If the issue persists, check your Google Sheets connection."
+                )
+                return
+
+            # Step 5: Calculate monthly total from Google Sheets (source of truth)
+            try:
+                worksheet = self.sheets.get_worksheet("receipt_total")
+                all_records = worksheet.get_all_values()
+
+                monthly_total = 0.0
+                count = 0
+                for row in all_records[1:]:  # Skip header
+                    if len(row) >= 2:
+                        # Extract month from filename (format: YYYY-MM-DD_... or self_YYYY-MM-DD_...)
+                        filename = row[0]
+                        if filename and "_" in filename:
+                            # Handle both "self_YYYY-MM-DD_..." and "YYYY-MM-DD_..." formats
+                            date_part = filename.replace("self_", "").split("_")[0]
+                            if date_part and len(date_part) >= 7:
+                                row_month = date_part[:7]  # YYYY-MM
+                                if row_month == month:
+                                    try:
+                                        monthly_total += float(
+                                            row[1]
+                                        )  # Column B: total_price
+                                        count += 1
+                                    except (ValueError, IndexError):
+                                        continue
+            except Exception as e:
+                print(f"[SelfDeclare] Error calculating monthly total: {e}")
+                monthly_total = total_price  # Fallback to just current amount
+                count = 1
+
+            # Step 6: Send confirmation embed
+            embed = discord.Embed(
+                title="✅ Receipt Declared",
+                description=f"Self-declared receipt saved directly to Google Sheets",
+                color=0x00FF00,
+                timestamp=now,
+            )
+
+            embed.add_field(name="Store", value=store_name, inline=True)
+            embed.add_field(name="Total", value=f"${total_price:.2f}", inline=True)
+            embed.add_field(
+                name="Date", value=now.strftime("%Y-%m-%d %H:%M"), inline=True
+            )
+
+            embed.add_field(
+                name=f"📊 {month} Shopping Total",
+                value=f"${monthly_total:.2f} ({count} receipt{'s' if count != 1 else ''})",
+                inline=False,
+            )
+
+            embed.add_field(
+                name="💡 Next Steps",
+                value=(
+                    f"Run `/clerk expenses2total` to update formulas in total_cost_monthly.\n"
+                    f"Your receipt is saved as: `{synthetic_filename}`"
+                ),
+                inline=False,
+            )
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            import traceback
+
+            error_details = traceback.format_exc()
+            print(f"[SelfDeclare] Error: {error_details}")
+            await interaction.followup.send(f"❌ Error declaring receipt: {str(e)}")
+
 
 async def setup(bot: commands.Bot):
     """Setup function for loading the cog."""
