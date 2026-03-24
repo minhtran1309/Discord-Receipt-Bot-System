@@ -779,26 +779,30 @@ class ClerkCog(commands.Cog):
                 )
                 return
 
-            # Step 2: Generate synthetic filename
+            # Step 2: Generate filename (simplified format for easier date extraction)
             now = datetime.now()
             month = now.strftime("%Y-%m")
             store_normalized = store_name.lower().replace(" ", "_")
-            synthetic_filename = f"self_{now.strftime('%Y-%m-%d_%H%M')}_{store_normalized}"
+            synthetic_filename = f"{now.strftime('%Y-%m-%d')}_{store_normalized}"
 
-            # Step 3: Get bot signature
+            # Step 3: Get bot signature and user info
             bot_signature = (
                 self.bot.settings.bot_name
                 if hasattr(self.bot, "settings")
                 else "Receipt Bot (Local)"
             )
+            creator = str(interaction.user.name) if interaction.user else "Unknown"
 
             # Step 4: Append directly to receipt_total sheet
             try:
                 row = [
-                    synthetic_filename,  # Column A: receipt_file_name
+                    synthetic_filename,  # Column A: receipt_file_name (YYYY-MM-DD_store)
                     total_price,  # Column B: total_price (referenced by formulas)
-                    bot_signature,  # Column C: submitted_by
+                    bot_signature,  # Column C: submitted_by (bot name)
                     "self_declared",  # Column D: sync_status (distinguishes from image-based)
+                    now.strftime("%H:%M:%S"),  # Column E: submission_time (HH:MM:SS)
+                    store_name,  # Column F: store (original store name)
+                    creator,  # Column G: creator (Discord username)
                 ]
                 self.sheets.append_row("receipt_total", row)
                 print(
@@ -822,21 +826,20 @@ class ClerkCog(commands.Cog):
                 count = 0
                 for row in all_records[1:]:  # Skip header
                     if len(row) >= 2:
-                        # Extract month from filename (format: YYYY-MM-DD_... or self_YYYY-MM-DD_...)
+                        # Extract month from filename (format: YYYY-MM-DD_store)
                         filename = row[0]
-                        if filename and "_" in filename:
-                            # Handle both "self_YYYY-MM-DD_..." and "YYYY-MM-DD_..." formats
-                            date_part = filename.replace("self_", "").split("_")[0]
-                            if date_part and len(date_part) >= 7:
-                                row_month = date_part[:7]  # YYYY-MM
-                                if row_month == month:
-                                    try:
-                                        monthly_total += float(
-                                            row[1]
-                                        )  # Column B: total_price
-                                        count += 1
-                                    except (ValueError, IndexError):
-                                        continue
+                        if filename and len(filename) >= 7:
+                            # Extract date part (first 10 chars: YYYY-MM-DD)
+                            date_part = filename[:10] if len(filename) >= 10 else filename[:7]
+                            row_month = date_part[:7]  # YYYY-MM
+                            if row_month == month:
+                                try:
+                                    monthly_total += float(
+                                        row[1]
+                                    )  # Column B: total_price
+                                    count += 1
+                                except (ValueError, IndexError):
+                                    continue
             except Exception as e:
                 print(f"[SelfDeclare] Error calculating monthly total: {e}")
                 monthly_total = total_price  # Fallback to just current amount

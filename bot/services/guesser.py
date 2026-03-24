@@ -1,4 +1,9 @@
-"""OpenRouter SDK integration for item name guessing."""
+"""OpenRouter SDK integration for item name guessing.
+
+DEPRECATED: Item guessing is deprecated in favor of manual self-declaration.
+This code is preserved for reference and potential future use.
+Use /clerk receipt command instead for manual receipt entry.
+"""
 
 import json
 from typing import Dict, List
