@@ -28,7 +28,7 @@ main (production-ready, stable)
 
 ### Step 1: Create a GitHub Issue
 
-Before starting any feature, create a GitHub Issue:
+**Option A: Via GitHub Web UI**
 
 1. Go to **GitHub → Issues → New Issue**
 2. Use a clear, descriptive title (e.g., "Add receipt export to CSV")
@@ -38,6 +38,30 @@ Before starting any feature, create a GitHub Issue:
    - **Acceptance Criteria**: What "done" looks like
 4. Assign labels (e.g., `enhancement`, `bug`, `refactor`)
 5. Assign yourself
+
+**Option B: Via GitHub CLI (`gh`)**
+
+```bash
+# Create an issue interactively
+gh issue create
+
+# Create an issue with all details inline
+gh issue create \
+  --title "Add receipt export to CSV" \
+  --body "**What:** Export receipts as CSV files
+**Why:** Users need to import data into Excel
+**Acceptance Criteria:** /receipt export command generates a downloadable CSV" \
+  --label "enhancement" \
+  --assignee "@me"
+
+# List open issues
+gh issue list
+
+# View a specific issue
+gh issue view 42
+```
+
+> **Tip:** Install GitHub CLI with `brew install gh` and authenticate with `gh auth login`.
 
 ### Step 2: Create a Feature Branch
 

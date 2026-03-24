@@ -1,4 +1,9 @@
-"""Mistral OCR service using official mistralai package."""
+"""Mistral OCR service using official mistralai package.
+
+DEPRECATED: OCR-based receipt processing is deprecated in favor of manual self-declaration.
+This code is preserved for reference and potential future use.
+Use /clerk receipt command instead for manual receipt entry.
+"""
 
 import base64
 

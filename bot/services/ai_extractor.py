@@ -1,4 +1,9 @@
-"""AI-powered receipt data extraction using OpenRouter."""
+"""AI-powered receipt data extraction using OpenRouter.
+
+DEPRECATED: AI extraction is deprecated in favor of manual self-declaration.
+This code is preserved for reference and potential future use.
+Use /clerk receipt command instead for manual receipt entry.
+"""
 
 import json
 from datetime import datetime

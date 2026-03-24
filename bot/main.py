@@ -72,17 +72,17 @@ class ReceiptBot(commands.Bot):
         #     ("Clerk", ClerkCog(self, self.sheets_service, self.storage)),
         # ]
         cogs_to_load = [
-            (
-                "Receipt",
-                ReceiptCog(
-                    self,
-                    self.ocr_service,
-                    self.storage,
-                    self.guesser,
-                    self.ai_extractor,
-                    self.settings,
-                ),
-            ),
+            # (
+            #     "Receipt",
+            #     ReceiptCog(
+            #         self,
+            #         self.ocr_service,
+            #         self.storage,
+            #         self.guesser,
+            #         self.ai_extractor,
+            #         self.settings,
+            #     ),
+            # ),
             # ("Guess", GuessCog(self, self.guesser, self.storage, self.settings)),
             ("Clerk", ClerkCog(self, self.sheets_service, self.storage)),
         ]
