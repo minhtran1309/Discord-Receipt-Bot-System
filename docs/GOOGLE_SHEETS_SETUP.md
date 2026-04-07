@@ -155,6 +155,46 @@ Click on cell **A1** and enter the following headers across the first row:
 
 ---
 
+### Step 2.2b: Set Up Additional Expense Tracking Sheets
+
+In addition to the main Sheet1 for receipt items, you need to create additional sheets for expense tracking categories.
+
+**Required Sheets:**
+1. **personal** - Personal expenses without receipts
+2. **utilities** - Utility expenses (electricity, water, internet, etc.)
+3. **transport** - Transportation expenses (gas, public transport, etc.)
+4. **extraordinary** - One-time or unusual expenses
+5. **eat_out** (or **eat_out_2026**) - Eating out and takeaway expenses
+
+**For each expense sheet, create the following column structure:**
+
+#### For personal, utilities, transport, extraordinary sheets:
+
+| A1 | B1 | C1 | D1 | E1 | F1 | G1 |
+|----|----|----|----|----|----|-----|
+| Date | Time | Amount | Category | Month | submitted_by | Description |
+
+#### For eat_out sheet:
+
+| A1 | B1 | C1 | D1 | E1 | F1 |
+|----|----|----|----|----|-----|
+| Date | Time | Amount | Category | Month | Description |
+
+**Important Notes:**
+- **Category** column (D) is auto-filled by the bot based on the command used
+- **Month** column (E) is auto-filled in YYYY-MM format for easy filtering
+- **submitted_by** column (F) tracks which bot instance (Local/Dev/Production) created the entry
+- **Description** column (G) allows users to add custom notes about each expense
+- The **eat_out** sheet does NOT have a submitted_by column (only 6 columns vs 7)
+
+**To create each sheet:**
+1. Click the **+** button at the bottom-left (next to Sheet1 tab)
+2. Rename the sheet to the exact name (e.g., "personal", "utilities", etc.)
+3. Add the header row as shown above
+4. Format headers (bold, background color, freeze first row)
+
+---
+
 ### Step 2.3: Get the Spreadsheet ID
 
 1. Look at the **URL** in your browser's address bar

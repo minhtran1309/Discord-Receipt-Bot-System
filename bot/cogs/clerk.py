@@ -309,11 +309,17 @@ class ClerkCog(commands.Cog):
     @clerk_group.command(
         name="special_treat", description="Log eating out or takeaway drink expense"
     )
-    async def special_treat(self, interaction: discord.Interaction, amount: float):
+    async def special_treat(
+        self,
+        interaction: discord.Interaction,
+        amount: float,
+        description: str = "Eating out / Takeaway drink",
+    ):
         """Log an eating out expense and update budget tracking.
 
         Args:
             amount: Amount spent on eating out or takeaway drink
+            description: Optional description of the expense
         """
         await interaction.response.defer()
 
@@ -328,7 +334,7 @@ class ClerkCog(commands.Cog):
             month = now.strftime("%Y-%m")
 
             # Create budget entry
-            entry = BudgetEntry(date=now, amount=amount, month=month)
+            entry = BudgetEntry(date=now, amount=amount, description=description, month=month)
 
             # Save to local storage
             filename = self.budget_storage.save_entry(entry)
@@ -342,6 +348,7 @@ class ClerkCog(commands.Cog):
                     amount,  # Amount
                     "Eating out / Takeaway",  # Category
                     month,  # Month
+                    description,  # Description
                 ]
                 self.sheets.append_row("eat_out", row)
                 print(f"[Budget] Updated Google Sheets: eat_out")
@@ -605,7 +612,7 @@ class ClerkCog(commands.Cog):
                 # User created these sheets with structure: [Date, Time, Amount, Category, Month, submitted_by]
                 sheet_name = category
 
-                # Prepare row: [Date, Time, Amount, Category, Month, submitted_by]
+                # Prepare row: [Date, Time, Amount, Category, Month, submitted_by, Description]
                 row = [
                     now.strftime("%Y-%m-%d"),  # Date
                     now.strftime("%H:%M"),  # Time
@@ -613,6 +620,7 @@ class ClerkCog(commands.Cog):
                     category,  # Category
                     month,  # Month
                     bot_signature,  # submitted_by
+                    description,  # Description
                 ]
 
                 # Append to sheet
@@ -647,7 +655,7 @@ class ClerkCog(commands.Cog):
                 await interaction.followup.send(
                     f"❌ Failed to sync to Google Sheets:\n```{e}```\n\n"
                     f"Please ensure the '{category}' sheet exists with correct structure:\n"
-                    f"`[Date, Time, Amount, Category, Month, submitted_by]`"
+                    f"`[Date, Time, Amount, Category, Month, submitted_by, Description]`"
                 )
                 return
 

@@ -19,8 +19,10 @@
 
 ## Features
 
-- **Receipt Processing**: Upload receipt images and extract structured data via OCR (Mistral API + OpenRouter AI)
-- **AI-Powered Extraction**: Automatically categorizes items and handles multi-language receipts
+> **NOTE**: Receipt image processing with OCR is **DEPRECATED** as of 2026-04-07. Use `/clerk receipt` for manual receipt declaration instead.
+
+- **Receipt Processing**: ~~Upload receipt images and extract structured data via OCR (Mistral API + OpenRouter AI)~~ **[DEPRECATED]**
+- **Manual Receipt Declaration**: Manually declare receipt totals using `/clerk receipt` command
 - **Purchase Analytics**: View store purchases by month/year with spending breakdowns
 - **Expense Tracking**: Syncs data to Google Sheets for easy tracking with dual-sync system (prevents duplicates)
 - **Budget Management**: Track eating out expenses with $100/month budget, surplus rolls to holiday fund
@@ -110,7 +112,7 @@ receipt-bot/
 
 | Command | Description | Parameters |
 |---------|-------------|------------|
-| `/receipt process` | Upload and process a receipt image | `image: Attachment` |
+| `/receipt process` | **[DEPRECATED]** Upload and process a receipt image (use `/clerk receipt` instead) | `image: Attachment` |
 | `/receipt list` | List all processed receipts | None |
 | `/receipt show` | Display receipt in TOON format | `filename: str` |
 | `/receipt verify` | Mark receipt as verified (includes budget alert) | `filename: str` |
@@ -124,6 +126,7 @@ receipt-bot/
 
 | Command | Description | Parameters |
 |---------|-------------|------------|
+| `/clerk receipt` | **NEW** Manually declare receipt total without image processing | `store_name: str, total_price: float` |
 | `/clerk sync` | Sync verified receipts to Google Sheets (3-step process) | None |
 | `/clerk status` | Check sync status of all receipts | None |
 | `/clerk spent` | Query spending on a product | `product, month (optional)` |
