@@ -206,3 +206,108 @@ git branch -d feature/my-feature
 | `docs/` | Documentation | `docs/api-reference` |
 
 > **Tip:** Include the issue number for traceability: `feature/42-receipt-export`
+
+---
+
+## Troubleshooting and Known Issues
+
+### Deployment Failures
+
+#### Issue: Feature Branch Deployment Fails with "couldn't find remote ref"
+
+**Symptom:**
+```
+fatal: couldn't find remote ref <branch-name-without-prefix>
+##[error]Process completed with exit code 128.
+```
+
+**Example:**
+- Branch: `feature/sheets-sync-description`
+- Error: `fatal: couldn't find remote ref sheets-sync-description`
+
+**Root Cause:**
+
+The deployment script in `.github/workflows/deploy-development.yml` was incorrectly extracting the branch name from `$GITHUB_REF` using `${GITHUB_REF##*/}`, which strips everything before the **last** `/`:
+
+```bash
+# INCORRECT - strips everything before last /
+BRANCH_NAME="${GITHUB_REF##*/}"
+# refs/heads/feature/my-branch → my-branch (WRONG!)
+```
+
+For feature branches with slashes (e.g., `feature/my-branch`), this resulted in:
+- Input: `refs/heads/feature/my-branch`
+- Extracted: `my-branch` (missing the `feature/` prefix)
+- Git tries to fetch: `my-branch` (doesn't exist)
+- Expected: `feature/my-branch`
+
+**Solution:**
+
+Use `${GITHUB_REF#refs/heads/}` instead, which removes only the `refs/heads/` prefix:
+
+```bash
+# CORRECT - removes only refs/heads/ prefix
+BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+# refs/heads/feature/my-branch → feature/my-branch (CORRECT!)
+```
+
+**Fixed in:** Commit `f6841f2` (2026-04-07)
+
+**Affected Branches:** Any branch with `/` in the name (e.g., `feature/*`, `fix/*`, etc.)
+
+**Prevention:**
+- This issue is now resolved in the deployment workflow
+- Future feature branches will deploy correctly regardless of naming convention
+
+---
+
+### CI/CD Best Practices
+
+#### Monitor Deployment Status
+
+Check if deployment succeeded:
+
+```bash
+# View latest workflow runs
+gh run list --workflow="Deploy to Development (GCP)" --limit 5
+
+# View specific run details
+gh run view <run-id>
+
+# View failed run logs
+gh run view <run-id> --log-failed
+
+# Re-run a failed deployment
+gh run rerun <run-id>
+```
+
+#### Debug Deployment Issues on GCP
+
+SSH into the GCP development server:
+
+```bash
+# SSH to dev server
+gcloud compute ssh botuser@discord-bot-server --zone=australia-southeast1-a
+
+# Check service status
+sudo systemctl status discord-bot-dev.service
+
+# View recent logs
+sudo journalctl -u discord-bot-dev.service -n 50 --no-pager
+
+# View real-time logs
+sudo journalctl -u discord-bot-dev.service -f
+
+# Restart service manually
+sudo systemctl restart discord-bot-dev.service
+```
+
+#### Common Deployment Errors
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `fatal: couldn't find remote ref` | Branch name extraction bug | Fixed in workflow (see above) |
+| `Permission denied (publickey)` | SSH key not configured | Re-run deployment to regenerate SSH key |
+| `Service failed to start` | Python errors in code | Check logs with `journalctl`, fix code, redeploy |
+| `ModuleNotFoundError` | Missing dependencies | Update `requirements.txt` or `environment.yml` |
+| `Connection timeout` | GCP instance not running | Start instance in GCP Console |
