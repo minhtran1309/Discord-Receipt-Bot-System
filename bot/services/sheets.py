@@ -316,7 +316,7 @@ class SheetsService:
 
         else:
             # For expense sheets (personal, utilities, transport, extraordinary)
-            # Structure: [Date, Time, Amount, Category, Month, submitted_by]
+            # Structure: [Date, Time, Amount, Category, Month, submitted_by, Description]
             # Month is in column E (index 4)
             month_col_idx = 4
 
