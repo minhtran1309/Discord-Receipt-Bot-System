@@ -67,7 +67,8 @@ jobs:
           cd /opt/discord-bot/app
 
           # Fetch latest code from current branch
-          BRANCH_NAME="${GITHUB_REF##*/}"
+          # Extract branch name from refs/heads/feature/branch-name -> feature/branch-name
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
           git fetch origin "$BRANCH_NAME"
           git reset --hard "origin/$BRANCH_NAME"
 
